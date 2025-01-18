@@ -31,9 +31,7 @@ impl ApplicationHandler for App {
         assert!(self.surface_instance.is_none());
         assert!(self.surface.is_none());
 
-        self.init_vk_instance(event_loop);
-        self.init_window(event_loop);
-        self.init_surface();
+        self.init(event_loop);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -60,6 +58,12 @@ impl App {
             surface_instance: None,
             surface: None,
         }
+    }
+
+    fn init(&mut self, event_loop: &ActiveEventLoop) {
+        self.init_vk_instance(event_loop);
+        self.init_window(event_loop);
+        self.init_surface();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
