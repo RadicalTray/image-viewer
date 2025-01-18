@@ -1,5 +1,5 @@
 use ash::{
-    khr,
+    ext, khr,
     vk::{
         self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT,
@@ -22,15 +22,12 @@ pub struct App {
     window: Option<Window>,
     surface_instance: Option<khr::surface::Instance>,
     surface: Option<vk::SurfaceKHR>,
+    debug_messenger_instance: Option<ext::debug_utils::Instance>,
+    debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        assert!(self.vk_instance.is_none());
-        assert!(self.window.is_none());
-        assert!(self.surface_instance.is_none());
-        assert!(self.surface.is_none());
-
         self.init(event_loop);
     }
 
@@ -57,11 +54,21 @@ impl App {
             window: None,
             surface_instance: None,
             surface: None,
+            debug_messenger_instance: None,
+            debug_messenger: None,
         }
     }
 
     fn init(&mut self, event_loop: &ActiveEventLoop) {
+        assert!(self.vk_instance.is_none());
+        assert!(self.window.is_none());
+        assert!(self.surface_instance.is_none());
+        assert!(self.surface.is_none());
+        assert!(self.debug_messenger_instance.is_none());
+        assert!(self.debug_messenger.is_none());
+
         self.init_vk_instance(event_loop);
+        self.init_debug_messenger();
         self.init_window(event_loop);
         self.init_surface();
     }
@@ -80,20 +87,8 @@ impl App {
         enabled_extensions.push(vk::EXT_DEBUG_UTILS_NAME.as_ptr());
         let enabled_layers = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
 
-        // TODO: refactor
-        let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-            .message_severity(
-                DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                    | DebugUtilsMessageSeverityFlagsEXT::INFO
-                    | DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | DebugUtilsMessageSeverityFlagsEXT::ERROR,
-            )
-            .message_type(
-                DebugUtilsMessageTypeFlagsEXT::GENERAL
-                    | DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-            )
-            .pfn_user_callback(Some(debug_callback));
+        let mut debug_info =
+            populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
 
         let app_info = vk::ApplicationInfo::default()
             .application_name(c"Image Viewer")
@@ -110,6 +105,26 @@ impl App {
                 vk_entry
                     .create_instance(&create_info, None)
                     .expect("Failed to create vulkan instance."),
+            )
+        };
+    }
+
+    fn init_debug_messenger(&mut self) {
+        let vk_entry = &self.vk_entry;
+        let vk_instance = self.vk_instance.as_ref().unwrap();
+
+        let debug_info =
+            populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
+
+        self.debug_messenger_instance =
+            Some(ext::debug_utils::Instance::new(vk_entry, vk_instance));
+        let debug_messenger_instance = self.debug_messenger_instance.as_ref().unwrap();
+
+        self.debug_messenger = unsafe {
+            Some(
+                debug_messenger_instance
+                    .create_debug_utils_messenger(&debug_info, None)
+                    .expect("Failed to create debug messenger."),
             )
         };
     }
@@ -153,10 +168,32 @@ impl App {
                 .unwrap()
                 .destroy_surface(self.surface.take().unwrap(), None);
             self.vk_instance.take().unwrap().destroy_instance(None);
+            self.debug_messenger_instance
+                .take()
+                .unwrap()
+                .destroy_debug_utils_messenger(self.debug_messenger.take().unwrap(), None);
         }
     }
 
     fn draw(&self) {}
+}
+
+fn populate_debug_create_info(
+    debug_info: vk::DebugUtilsMessengerCreateInfoEXT,
+) -> vk::DebugUtilsMessengerCreateInfoEXT {
+    debug_info
+        .message_severity(
+            DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                | DebugUtilsMessageSeverityFlagsEXT::INFO
+                | DebugUtilsMessageSeverityFlagsEXT::WARNING
+                | DebugUtilsMessageSeverityFlagsEXT::ERROR,
+        )
+        .message_type(
+            DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+        )
+        .pfn_user_callback(Some(debug_callback))
 }
 
 unsafe extern "system" fn debug_callback(
@@ -167,7 +204,7 @@ unsafe extern "system" fn debug_callback(
 ) -> vk::Bool32 {
     let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
     println!(
-        "Validation Layer: {}",
+        "DEBUG: {}",
         String::from_utf8_lossy(s.to_bytes()).to_string()
     );
     vk::FALSE
