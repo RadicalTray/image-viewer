@@ -1,6 +1,28 @@
 # TODO
 ## Tasks
-    [ ] get a window bruh
-    [ ] enable validation layer
-    [ ] check for extension and layer support (everything works right now)
+    [ ] createInstance()
+        [ ] check extension and layer support
+    [ ] setupDebugMessenger()
+    [ ] createSurface()
+    [ ] pickPhysicalDevice()
+    [ ] createLogicalDevice()
+    [ ] createSwapchain()
+    [ ] createImageViews()
+    [ ] createRenderPass()
+    [ ] createDescriptorSetLayout()
+    [ ] createGraphicsPipeline()
+    [ ] createCommandPool()
+    [ ] createDepthResources()
+    [ ] createFramebuffers()
+    [ ] createTextureImage()
+    [ ] createTextureImageView()
+    [ ] createTextureSampler()
+    [ ] loadModel()
+    [ ] createVertexBuffer()
+    [ ] createIndexBuffer()
+    [ ] createUniformBuffers()
+    [ ] createDescriptorPool()
+    [ ] createDescriptorSets()
+    [ ] createCommandBuffers()
+    [ ] createSyncObjects()
     [ ] disable validation layer on release build

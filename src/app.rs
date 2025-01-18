@@ -1,4 +1,12 @@
-use ash::{khr, vk};
+use ash::{
+    khr,
+    vk::{
+        self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        DebugUtilsMessengerCallbackDataEXT,
+    },
+};
+use core::ffi::c_void;
+use std::ffi::CStr;
 use winit::raw_window_handle::HasWindowHandle;
 use winit::{
     application::ApplicationHandler,
@@ -54,8 +62,6 @@ impl App {
         }
     }
 
-    fn draw(&self) {}
-
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
         let vk_entry = &self.vk_entry;
 
@@ -66,8 +72,24 @@ impl App {
             .unwrap(),
         );
 
+        // TODO: disable this on release build
         enabled_extensions.push(vk::EXT_DEBUG_UTILS_NAME.as_ptr());
         let enabled_layers = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
+
+        // TODO: refactor
+        let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
+            .message_severity(
+                DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                    | DebugUtilsMessageSeverityFlagsEXT::INFO
+                    | DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | DebugUtilsMessageSeverityFlagsEXT::ERROR,
+            )
+            .message_type(
+                DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+            )
+            .pfn_user_callback(Some(debug_callback));
 
         let app_info = vk::ApplicationInfo::default()
             .application_name(c"Image Viewer")
@@ -76,7 +98,8 @@ impl App {
         let create_info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
             .enabled_extension_names(&enabled_extensions)
-            .enabled_layer_names(&enabled_layers);
+            .enabled_layer_names(&enabled_layers)
+            .push_next(&mut debug_info);
 
         self.vk_instance = unsafe {
             Some(
@@ -128,4 +151,24 @@ impl App {
             self.vk_instance.take().unwrap().destroy_instance(None);
         }
     }
+
+    fn draw(&self) {}
 }
+
+unsafe extern "system" fn debug_callback(
+    _: DebugUtilsMessageSeverityFlagsEXT,
+    _: DebugUtilsMessageTypeFlagsEXT,
+    callback_data: *const DebugUtilsMessengerCallbackDataEXT<'_>,
+    _: *mut c_void,
+) -> vk::Bool32 {
+    let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
+    println!(
+        "Validation Layer: {}",
+        String::from_utf8_lossy(s.to_bytes()).to_string()
+    );
+    vk::FALSE
+}
+
+//
+// fn get_debug_create_info() {
+// }
