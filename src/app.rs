@@ -24,6 +24,7 @@ pub struct App {
     surface: Option<vk::SurfaceKHR>,
     debug_messenger_instance: Option<ext::debug_utils::Instance>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
+    physical_device: Option<vk::PhysicalDevice>,
 }
 
 impl ApplicationHandler for App {
@@ -35,7 +36,6 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 println!("Exiting.");
-                self.cleanup();
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -46,6 +46,7 @@ impl ApplicationHandler for App {
     }
 }
 
+/// clean up on Drop
 impl App {
     pub fn new() -> Self {
         App {
@@ -56,6 +57,7 @@ impl App {
             surface: None,
             debug_messenger_instance: None,
             debug_messenger: None,
+            physical_device: None,
         }
     }
 
@@ -71,6 +73,7 @@ impl App {
         self.init_debug_messenger();
         self.init_window(event_loop);
         self.init_surface();
+        self.init_physical_device();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -92,7 +95,8 @@ impl App {
 
         let app_info = vk::ApplicationInfo::default()
             .application_name(c"Image Viewer")
-            .application_version(vk::make_api_version(0, 1, 0, 0));
+            .application_version(vk::make_api_version(0, 1, 0, 0))
+            .api_version(vk::API_VERSION_1_3);
 
         let create_info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
@@ -159,9 +163,21 @@ impl App {
         };
     }
 
-    // Is implementing this on Drop possible? and is it even a good idea?
-    /// used on WindowEvent::CloseRequested
-    fn cleanup(&mut self) {
+    fn init_physical_device(&mut self) {
+        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let physical_devices = unsafe {
+            vk_instance
+                .enumerate_physical_devices()
+                .expect("Unable to enumerate physical devices.")
+        };
+        self.physical_device = Some(*physical_devices.get(0).expect("Failed to find suitable physical device."));
+    }
+
+    fn draw(&self) {}
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
         unsafe {
             self.surface_instance
                 .take()
@@ -175,7 +191,6 @@ impl App {
         }
     }
 
-    fn draw(&self) {}
 }
 
 fn populate_debug_create_info(
@@ -184,7 +199,7 @@ fn populate_debug_create_info(
     debug_info
         .message_severity(
             DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                | DebugUtilsMessageSeverityFlagsEXT::INFO
+                // | DebugUtilsMessageSeverityFlagsEXT::INFO
                 | DebugUtilsMessageSeverityFlagsEXT::WARNING
                 | DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
@@ -209,7 +224,3 @@ unsafe extern "system" fn debug_callback(
     );
     vk::FALSE
 }
-
-//
-// fn get_debug_create_info() {
-// }

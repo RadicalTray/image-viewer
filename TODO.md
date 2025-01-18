@@ -1,10 +1,12 @@
 # TODO
 ## Tasks
-    [ ] createInstance()
+    [x] initWindow()
+    [x] createInstance()
         [ ] check extension and layer support
-    [ ] setupDebugMessenger()
-    [ ] createSurface()
-    [ ] pickPhysicalDevice()
+    [x] setupDebugMessenger()
+    [x] createSurface()
+    [x] pickPhysicalDevice()
+        [ ] prefer something / interactively choose
     [ ] createLogicalDevice()
     [ ] createSwapchain()
     [ ] createImageViews()
