@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 ash = { version = "0.38.0", features = ["linked"] }
-glfw = { version = "0.59.0", features = ["vulkan"] }
+ash-window = "0.13.0"
+winit = "0.30.8"
 
 [dev-dependencies]
 libloading = "0.8.6"
