@@ -2,7 +2,7 @@
 ## Tasks
     [x] initWindow()
     [x] createInstance()
-        [ ] check extension and layer support
+        [x] check extension and layer support
     [x] setupDebugMessenger()
     [x] createSurface()
     [x] pickPhysicalDevice()

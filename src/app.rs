@@ -16,6 +16,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
+const VALIDATION_LAYERS: [*const i8; 1] = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
+
 pub struct App {
     vk_entry: ash::Entry,
     vk_instance: Option<ash::Instance>,
@@ -35,7 +37,6 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                println!("Exiting.");
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -79,7 +80,7 @@ impl App {
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
         let vk_entry = &self.vk_entry;
 
-        let mut enabled_extensions = Vec::from(
+        let mut enabled_extension_names = Vec::from(
             ash_window::enumerate_required_extensions(
                 event_loop.display_handle().unwrap().as_raw(),
             )
@@ -87,11 +88,23 @@ impl App {
         );
 
         // TODO: disable this on release build
-        enabled_extensions.push(vk::EXT_DEBUG_UTILS_NAME.as_ptr());
-        let enabled_layers = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
-
+        enabled_extension_names.push(vk::EXT_DEBUG_UTILS_NAME.as_ptr());
+        let enabled_layer_names = Vec::from(VALIDATION_LAYERS);
         let mut debug_info =
             populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
+
+        let enabled_extension_names = self.check_extensions_support(enabled_extension_names);
+        let enabled_layer_names = self.check_layers_support(enabled_layer_names);
+        println!("Enabled extensions:");
+        for name in &enabled_extension_names {
+            let x_cstr = unsafe { CStr::from_ptr(*name) };
+            println!("\t{}", String::from_utf8_lossy(x_cstr.to_bytes()));
+        }
+        println!("Enabled layers:");
+        for name in &enabled_layer_names {
+            let x_cstr = unsafe { CStr::from_ptr(*name) };
+            println!("\t{}", String::from_utf8_lossy(x_cstr.to_bytes()));
+        }
 
         let app_info = vk::ApplicationInfo::default()
             .application_name(c"Image Viewer")
@@ -100,8 +113,8 @@ impl App {
 
         let create_info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
-            .enabled_extension_names(&enabled_extensions)
-            .enabled_layer_names(&enabled_layers)
+            .enabled_extension_names(&enabled_extension_names)
+            .enabled_layer_names(&enabled_layer_names)
             .push_next(&mut debug_info);
 
         self.vk_instance = unsafe {
@@ -111,6 +124,57 @@ impl App {
                     .expect("Failed to create vulkan instance."),
             )
         };
+    }
+
+    fn check_extensions_support(
+        &self,
+        mut enabled_extension_names: Vec<*const i8>,
+    ) -> Vec<*const i8> {
+        let available_extensions = unsafe {
+            self.vk_entry
+                .enumerate_instance_extension_properties(None)
+                .unwrap()
+        };
+
+        enabled_extension_names.retain(|x| {
+            let x_cstr = unsafe { CStr::from_ptr(*x) };
+            if available_extensions
+                .iter()
+                .any(|y| x_cstr == y.extension_name_as_c_str().unwrap())
+            {
+                true
+            } else {
+                println!(
+                    "Extension {} is not supported!",
+                    String::from_utf8_lossy(x_cstr.to_bytes())
+                );
+                false
+            }
+        });
+        enabled_extension_names
+    }
+
+    fn check_layers_support(&self, mut enabled_layer_names: Vec<*const i8>) -> Vec<*const i8> {
+        let available_layers =
+            unsafe { self.vk_entry.enumerate_instance_layer_properties().unwrap() };
+
+        enabled_layer_names.retain(|x| {
+            let x_cstr = unsafe { CStr::from_ptr(*x) };
+            if available_layers
+                .iter()
+                .any(|y| x_cstr == y.layer_name_as_c_str().unwrap())
+            {
+                true
+            } else {
+                println!(
+                    "Layer {} is not supported!",
+                    String::from_utf8_lossy(x_cstr.to_bytes())
+                );
+                false
+            }
+        });
+
+        enabled_layer_names
     }
 
     fn init_debug_messenger(&mut self) {
@@ -170,7 +234,19 @@ impl App {
                 .enumerate_physical_devices()
                 .expect("Unable to enumerate physical devices.")
         };
-        self.physical_device = Some(*physical_devices.get(0).expect("Failed to find suitable physical device."));
+        self.physical_device = Some(
+            *physical_devices
+                .get(0)
+                .expect("Failed to find suitable physical device."),
+        );
+    }
+
+    fn init_logical_device(&mut self) {
+        // TODO: find queue families
+        // let queue_info = vk::DeviceQueueCreateInfo::default();
+
+        let device_info = vk::DeviceCreateInfo::default();
+        let features = vk::PhysicalDeviceFeatures::default();
     }
 
     fn draw(&self) {}
@@ -190,7 +266,6 @@ impl Drop for App {
                 .destroy_debug_utils_messenger(self.debug_messenger.take().unwrap(), None);
         }
     }
-
 }
 
 fn populate_debug_create_info(
@@ -218,9 +293,6 @@ unsafe extern "system" fn debug_callback(
     _: *mut c_void,
 ) -> vk::Bool32 {
     let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
-    println!(
-        "DEBUG: {}",
-        String::from_utf8_lossy(s.to_bytes()).to_string()
-    );
+    println!("DEBUG: {}", String::from_utf8_lossy(s.to_bytes()));
     vk::FALSE
 }
