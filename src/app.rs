@@ -5,8 +5,7 @@ use ash::{
         DebugUtilsMessengerCallbackDataEXT,
     },
 };
-use core::ffi::c_void;
-use std::ffi::CStr;
+use std::ffi::{CStr, c_void, c_char};
 use winit::raw_window_handle::HasWindowHandle;
 use winit::{
     application::ApplicationHandler,
@@ -16,7 +15,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-const VALIDATION_LAYERS: [*const i8; 1] = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
+const VALIDATION_LAYERS: [*const c_char; 1] = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
 
 pub struct App {
     vk_entry: ash::Entry,
@@ -128,8 +127,8 @@ impl App {
 
     fn check_extensions_support(
         &self,
-        mut enabled_extension_names: Vec<*const i8>,
-    ) -> Vec<*const i8> {
+        mut enabled_extension_names: Vec<*const c_char>,
+    ) -> Vec<*const c_char> {
         let available_extensions = unsafe {
             self.vk_entry
                 .enumerate_instance_extension_properties(None)
@@ -154,7 +153,7 @@ impl App {
         enabled_extension_names
     }
 
-    fn check_layers_support(&self, mut enabled_layer_names: Vec<*const i8>) -> Vec<*const i8> {
+    fn check_layers_support(&self, mut enabled_layer_names: Vec<*const c_char>) -> Vec<*const c_char> {
         let available_layers =
             unsafe { self.vk_entry.enumerate_instance_layer_properties().unwrap() };
 
