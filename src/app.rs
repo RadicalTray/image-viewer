@@ -5,6 +5,7 @@ use ash::{
         DebugUtilsMessengerCallbackDataEXT,
     },
 };
+use crate::constants::*;
 use std::ffi::{CStr, c_void, c_char};
 use winit::raw_window_handle::HasWindowHandle;
 use winit::{
@@ -14,8 +15,6 @@ use winit::{
     raw_window_handle::HasDisplayHandle,
     window::{Window, WindowId},
 };
-
-const VALIDATION_LAYERS: [*const c_char; 1] = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
 
 pub struct App {
     vk_entry: ash::Entry,
@@ -87,8 +86,8 @@ impl App {
         );
 
         // TODO: disable this on release build
-        enabled_extension_names.push(vk::EXT_DEBUG_UTILS_NAME.as_ptr());
-        let enabled_layer_names = Vec::from(VALIDATION_LAYERS);
+        enabled_extension_names.extend(ENABLED_EXTENSION_NAMES);
+        let enabled_layer_names = Vec::from(ENABLED_LAYER_NAMES);
         let mut debug_info =
             populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
 

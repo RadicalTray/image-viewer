@@ -1,4 +1,5 @@
 mod app;
+mod constants;
 
 use app::App;
 use winit::event_loop::{ControlFlow, EventLoop};
