@@ -9,18 +9,13 @@
         [-] prefer something / interactively choose
         [x] check for supports
     [x] createLogicalDevice()
-    [ ] createSwapchain()
+    [x] createSwapchain()
     [ ] createImageViews()
     [ ] createRenderPass()
     [ ] createDescriptorSetLayout()
     [ ] createGraphicsPipeline()
     [ ] createCommandPool()
-    [ ] createDepthResources()
     [ ] createFramebuffers()
-    [ ] createTextureImage()
-    [ ] createTextureImageView()
-    [ ] createTextureSampler()
-    [ ] loadModel()
     [ ] createVertexBuffer()
     [ ] createIndexBuffer()
     [ ] createUniformBuffers()
@@ -28,4 +23,11 @@
     [ ] createDescriptorSets()
     [ ] createCommandBuffers()
     [ ] createSyncObjects()
+    [ ] Render something to window
+    [ ] recreateSwapchain()
+    [ ] createDepthResources()
+    [ ] createTextureImage()
+    [ ] createTextureImageView()
+    [ ] createTextureSampler()
+    [ ] loadModel()
     [ ] disable validation layer on release build
