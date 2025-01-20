@@ -1,4 +1,6 @@
-use crate::constants::*;
+use crate::{
+    constants::*, physical_device::PhysicalDevice, queue_family_indices::QueueFamilyIndices,
+};
 use ash::{
     ext, khr,
     vk::{
@@ -27,7 +29,7 @@ pub struct App {
     surface: Option<vk::SurfaceKHR>,
     debug_messenger_instance: Option<ext::debug_utils::Instance>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
-    physical_device: Option<vk::PhysicalDevice>,
+    physical_device: Option<PhysicalDevice>,
     device: Option<ash::Device>,
     graphics_queue: Option<vk::Queue>,
     present_queue: Option<vk::Queue>,
@@ -255,35 +257,29 @@ impl App {
                 .enumerate_physical_devices()
                 .expect("Unable to enumerate physical devices.")
         };
-        self.physical_device = Some(
-            *physical_devices
-                .get(0)
-                .expect("Failed to find suitable physical device."),
-        );
+        for device in physical_devices {
+            self.physical_device = Some(PhysicalDevice::new(device));
+        }
     }
 
     fn init_logical_device(&mut self) {
         let vk_instance = self.vk_instance.as_ref().unwrap();
-        let physical_device = self.physical_device.unwrap();
+        let physical_device = self.physical_device.as_ref().unwrap();
         let surface_instance = self.surface_instance.as_ref().unwrap();
-        let surface = self.surface.unwrap();
+        let surface = self.surface.as_ref().unwrap();
 
         let queue_family_properties =
-            unsafe { vk_instance.get_physical_device_queue_family_properties(physical_device) };
+            unsafe { physical_device.get_queue_family_properties(&vk_instance) };
 
         let mut queue_family_indices = QueueFamilyIndices::default();
         for (i, property) in queue_family_properties.iter().enumerate() {
-            let supports_surface = unsafe {
-                surface_instance
-                    .get_physical_device_surface_support(
-                        physical_device,
-                        i.try_into().unwrap(),
-                        surface,
-                    )
+            let support_surface = unsafe {
+                physical_device
+                    .support_surface(surface_instance, i.try_into().unwrap(), *surface)
                     .unwrap()
             };
 
-            if supports_surface {
+            if support_surface {
                 queue_family_indices.present_family = Some(i.try_into().unwrap());
             }
 
@@ -317,8 +313,8 @@ impl App {
             .enabled_extension_names(&ENABLED_DEVICE_EXTENSION_NAMES);
 
         let device = unsafe {
-            vk_instance
-                .create_device(physical_device, &device_info, None)
+            physical_device
+                .create_logical_device(vk_instance, &device_info, None)
                 .unwrap()
         };
 
@@ -337,6 +333,7 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
+            drop(self.physical_device.take());
             self.surface_instance
                 .take()
                 .unwrap()
@@ -377,16 +374,4 @@ unsafe extern "system" fn debug_callback(
     let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
     println!("DEBUG: {}", String::from_utf8_lossy(s.to_bytes()));
     vk::FALSE
-}
-
-#[derive(Default)]
-struct QueueFamilyIndices {
-    pub graphics_family: Option<u32>,
-    pub present_family: Option<u32>,
-}
-
-impl QueueFamilyIndices {
-    fn is_complete(&self) -> bool {
-        self.graphics_family.is_some() && self.present_family.is_some()
-    }
 }
