@@ -29,6 +29,7 @@ pub struct App {
     surface: Option<vk::SurfaceKHR>,
     debug_messenger_instance: Option<ext::debug_utils::Instance>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
+    queue_family_indices: Option<QueueFamilyIndices>,
     physical_device: Option<PhysicalDevice>,
     device: Option<ash::Device>,
     graphics_queue: Option<vk::Queue>,
@@ -64,6 +65,7 @@ impl App {
             surface: None,
             debug_messenger_instance: None,
             debug_messenger: None,
+            queue_family_indices: None,
             physical_device: None,
             device: None,
             graphics_queue: None,
@@ -247,9 +249,6 @@ impl App {
         };
     }
 
-    // TODO:
-    //  [ ] check device extension support
-    //  [ ] abstract device
     fn init_physical_device(&mut self) {
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let physical_devices = unsafe {
@@ -257,45 +256,80 @@ impl App {
                 .enumerate_physical_devices()
                 .expect("Unable to enumerate physical devices.")
         };
+
+        let mut chosen_device = None;
+        let mut chosen_queue_family_indices = None;
         for device in physical_devices {
-            self.physical_device = Some(PhysicalDevice::new(device));
+            let device = PhysicalDevice::new(device);
+            let queue_family_properties =
+                unsafe { device.get_queue_family_properties(&vk_instance) };
+
+            let surface_instance = self.surface_instance.as_ref().unwrap();
+            let surface = self.surface.as_ref().unwrap();
+
+            let mut queue_family_indices = QueueFamilyIndices::default();
+            for (i, property) in queue_family_properties.iter().enumerate() {
+                let support_surface = unsafe {
+                    device
+                        .support_surface(surface_instance, i.try_into().unwrap(), *surface)
+                        .unwrap()
+                };
+
+                if support_surface {
+                    queue_family_indices.present_family = Some(i.try_into().unwrap());
+                }
+
+                if property.queue_flags.intersects(vk::QueueFlags::GRAPHICS) {
+                    queue_family_indices.graphics_family = Some(i.try_into().unwrap());
+                }
+
+                if queue_family_indices.is_complete() {
+                    break;
+                }
+            }
+
+            let supported_features = unsafe { device.get_features(vk_instance) };
+
+            unsafe {
+                if !(device.support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
+                    && queue_family_indices.is_complete()
+                    && check_physical_device_features(supported_features))
+                {
+                    continue;
+                }
+
+                let supported_surface_format = device
+                    .get_supported_surface_formats(surface_instance, *surface)
+                    .unwrap();
+                let supported_present_modes = device
+                    .get_supported_present_modes(surface_instance, *surface)
+                    .unwrap();
+
+                if supported_surface_format.is_empty() || supported_present_modes.is_empty() {
+                    continue;
+                }
+            }
+
+            chosen_device = Some(device);
+            chosen_queue_family_indices = Some(queue_family_indices);
         }
+
+        if chosen_device.is_none() || chosen_queue_family_indices.is_none() {
+            panic!("Failed to find suitable physical device");
+        }
+
+        self.physical_device = chosen_device;
+        self.queue_family_indices = chosen_queue_family_indices;
     }
 
     fn init_logical_device(&mut self) {
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
-        let surface_instance = self.surface_instance.as_ref().unwrap();
-        let surface = self.surface.as_ref().unwrap();
+        let queue_family_indices = self.queue_family_indices.as_ref().unwrap();
+        let present_family = queue_family_indices.present_family.unwrap();
+        let graphics_family = queue_family_indices.graphics_family.unwrap();
 
-        let queue_family_properties =
-            unsafe { physical_device.get_queue_family_properties(&vk_instance) };
-
-        let mut queue_family_indices = QueueFamilyIndices::default();
-        for (i, property) in queue_family_properties.iter().enumerate() {
-            let support_surface = unsafe {
-                physical_device
-                    .support_surface(surface_instance, i.try_into().unwrap(), *surface)
-                    .unwrap()
-            };
-
-            if support_surface {
-                queue_family_indices.present_family = Some(i.try_into().unwrap());
-            }
-
-            if property.queue_flags.intersects(vk::QueueFlags::GRAPHICS) {
-                queue_family_indices.graphics_family = Some(i.try_into().unwrap());
-            }
-
-            if queue_family_indices.is_complete() {
-                break;
-            }
-        }
-
-        let unique_indices = HashSet::from([
-            queue_family_indices.present_family.unwrap(),
-            queue_family_indices.graphics_family.unwrap(),
-        ]);
+        let unique_indices = HashSet::from([present_family, graphics_family]);
 
         let mut queue_create_infos = Vec::with_capacity(unique_indices.len());
         let queue_priority = [1.0f32];
@@ -318,12 +352,8 @@ impl App {
                 .unwrap()
         };
 
-        self.graphics_queue = unsafe {
-            Some(device.get_device_queue(queue_family_indices.graphics_family.unwrap(), 0))
-        };
-        self.present_queue = unsafe {
-            Some(device.get_device_queue(queue_family_indices.present_family.unwrap(), 0))
-        };
+        self.graphics_queue = unsafe { Some(device.get_device_queue(graphics_family, 0)) };
+        self.present_queue = unsafe { Some(device.get_device_queue(present_family, 0)) };
         self.device = Some(device);
     }
 
@@ -333,7 +363,6 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
-            drop(self.physical_device.take());
             self.surface_instance
                 .take()
                 .unwrap()

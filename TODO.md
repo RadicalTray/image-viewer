@@ -6,8 +6,9 @@
     [x] setupDebugMessenger()
     [x] createSurface()
     [x] pickPhysicalDevice()
-        [ ] prefer something / interactively choose
-    [ ] createLogicalDevice()
+        [-] prefer something / interactively choose
+        [x] check for supports
+    [x] createLogicalDevice()
     [ ] createSwapchain()
     [ ] createImageViews()
     [ ] createRenderPass()
