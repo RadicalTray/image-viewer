@@ -1,3 +1,4 @@
+use crate::constants::*;
 use ash::{
     ext, khr,
     vk::{
@@ -5,14 +6,16 @@ use ash::{
         DebugUtilsMessengerCallbackDataEXT,
     },
 };
-use crate::constants::*;
-use std::ffi::{CStr, c_void, c_char};
-use winit::raw_window_handle::HasWindowHandle;
+use std::{
+    collections::HashSet,
+    ffi::{CStr, c_char, c_void},
+};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::ActiveEventLoop,
     raw_window_handle::HasDisplayHandle,
+    raw_window_handle::HasWindowHandle,
     window::{Window, WindowId},
 };
 
@@ -25,6 +28,9 @@ pub struct App {
     debug_messenger_instance: Option<ext::debug_utils::Instance>,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
     physical_device: Option<vk::PhysicalDevice>,
+    device: Option<ash::Device>,
+    graphics_queue: Option<vk::Queue>,
+    present_queue: Option<vk::Queue>,
 }
 
 impl ApplicationHandler for App {
@@ -57,22 +63,33 @@ impl App {
             debug_messenger_instance: None,
             debug_messenger: None,
             physical_device: None,
+            device: None,
+            graphics_queue: None,
+            present_queue: None,
         }
     }
 
-    fn init(&mut self, event_loop: &ActiveEventLoop) {
+    fn assert_null(&self) {
         assert!(self.vk_instance.is_none());
         assert!(self.window.is_none());
         assert!(self.surface_instance.is_none());
         assert!(self.surface.is_none());
         assert!(self.debug_messenger_instance.is_none());
         assert!(self.debug_messenger.is_none());
+        assert!(self.physical_device.is_none());
+        assert!(self.device.is_none());
+        assert!(self.graphics_queue.is_none());
+        assert!(self.present_queue.is_none());
+    }
 
+    fn init(&mut self, event_loop: &ActiveEventLoop) {
+        self.assert_null();
         self.init_vk_instance(event_loop);
         self.init_debug_messenger();
         self.init_window(event_loop);
         self.init_surface();
         self.init_physical_device();
+        self.init_logical_device();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -86,8 +103,8 @@ impl App {
         );
 
         // TODO: disable this on release build
-        enabled_extension_names.extend(ENABLED_EXTENSION_NAMES);
-        let enabled_layer_names = Vec::from(ENABLED_LAYER_NAMES);
+        enabled_extension_names.extend(DEBUG_ENABLED_EXTENSION_NAMES);
+        let enabled_layer_names = Vec::from(DEBUG_ENABLED_LAYER_NAMES);
         let mut debug_info =
             populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
 
@@ -152,7 +169,10 @@ impl App {
         enabled_extension_names
     }
 
-    fn check_layers_support(&self, mut enabled_layer_names: Vec<*const c_char>) -> Vec<*const c_char> {
+    fn check_layers_support(
+        &self,
+        mut enabled_layer_names: Vec<*const c_char>,
+    ) -> Vec<*const c_char> {
         let available_layers =
             unsafe { self.vk_entry.enumerate_instance_layer_properties().unwrap() };
 
@@ -183,7 +203,7 @@ impl App {
             populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
 
         self.debug_messenger_instance =
-            Some(ext::debug_utils::Instance::new(vk_entry, vk_instance));
+            Some(ext::debug_utils::Instance::new(vk_entry, &vk_instance));
         let debug_messenger_instance = self.debug_messenger_instance.as_ref().unwrap();
 
         self.debug_messenger = unsafe {
@@ -209,13 +229,13 @@ impl App {
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let window = self.window.as_ref().unwrap();
 
-        self.surface_instance = Some(khr::surface::Instance::new(vk_entry, vk_instance));
+        self.surface_instance = Some(khr::surface::Instance::new(vk_entry, &vk_instance));
 
         self.surface = unsafe {
             Some(
                 ash_window::create_surface(
                     vk_entry,
-                    vk_instance,
+                    &vk_instance,
                     window.display_handle().unwrap().as_raw(),
                     window.window_handle().unwrap().as_raw(),
                     None,
@@ -225,6 +245,9 @@ impl App {
         };
     }
 
+    // TODO:
+    //  [ ] check device extension support
+    //  [ ] abstract device
     fn init_physical_device(&mut self) {
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let physical_devices = unsafe {
@@ -240,11 +263,72 @@ impl App {
     }
 
     fn init_logical_device(&mut self) {
-        // TODO: find queue families
-        // let queue_info = vk::DeviceQueueCreateInfo::default();
+        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let physical_device = self.physical_device.unwrap();
+        let surface_instance = self.surface_instance.as_ref().unwrap();
+        let surface = self.surface.unwrap();
 
-        let device_info = vk::DeviceCreateInfo::default();
-        let features = vk::PhysicalDeviceFeatures::default();
+        let queue_family_properties =
+            unsafe { vk_instance.get_physical_device_queue_family_properties(physical_device) };
+
+        let mut queue_family_indices = QueueFamilyIndices::default();
+        for (i, property) in queue_family_properties.iter().enumerate() {
+            let supports_surface = unsafe {
+                surface_instance
+                    .get_physical_device_surface_support(
+                        physical_device,
+                        i.try_into().unwrap(),
+                        surface,
+                    )
+                    .unwrap()
+            };
+
+            if supports_surface {
+                queue_family_indices.present_family = Some(i.try_into().unwrap());
+            }
+
+            if property.queue_flags.intersects(vk::QueueFlags::GRAPHICS) {
+                queue_family_indices.graphics_family = Some(i.try_into().unwrap());
+            }
+
+            if queue_family_indices.is_complete() {
+                break;
+            }
+        }
+
+        let unique_indices = HashSet::from([
+            queue_family_indices.present_family.unwrap(),
+            queue_family_indices.graphics_family.unwrap(),
+        ]);
+
+        let mut queue_create_infos = Vec::with_capacity(unique_indices.len());
+        let queue_priority = [1.0f32];
+        for idx in unique_indices {
+            let queue_create_info = vk::DeviceQueueCreateInfo::default()
+                .queue_family_index(idx)
+                .queue_priorities(&queue_priority);
+            queue_create_infos.push(queue_create_info);
+        }
+
+        let features = vk::PhysicalDeviceFeatures::default().sampler_anisotropy(true);
+        let device_info = vk::DeviceCreateInfo::default()
+            .queue_create_infos(&queue_create_infos)
+            .enabled_features(&features)
+            .enabled_extension_names(&ENABLED_DEVICE_EXTENSION_NAMES);
+
+        let device = unsafe {
+            vk_instance
+                .create_device(physical_device, &device_info, None)
+                .unwrap()
+        };
+
+        self.graphics_queue = unsafe {
+            Some(device.get_device_queue(queue_family_indices.graphics_family.unwrap(), 0))
+        };
+        self.present_queue = unsafe {
+            Some(device.get_device_queue(queue_family_indices.present_family.unwrap(), 0))
+        };
+        self.device = Some(device);
     }
 
     fn draw(&self) {}
@@ -293,4 +377,16 @@ unsafe extern "system" fn debug_callback(
     let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
     println!("DEBUG: {}", String::from_utf8_lossy(s.to_bytes()));
     vk::FALSE
+}
+
+#[derive(Default)]
+struct QueueFamilyIndices {
+    pub graphics_family: Option<u32>,
+    pub present_family: Option<u32>,
+}
+
+impl QueueFamilyIndices {
+    fn is_complete(&self) -> bool {
+        self.graphics_family.is_some() && self.present_family.is_some()
+    }
 }
