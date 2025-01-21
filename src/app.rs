@@ -37,6 +37,7 @@ pub struct App<'a> {
     present_queue: Option<vk::Queue>,
     swapchain: Option<Swapchain<'a>>,
     swapchain_image_views: Option<Vec<vk::ImageView>>,
+    render_pass: Option<vk::RenderPass>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -75,6 +76,7 @@ impl<'a> App<'a> {
             present_queue: None,
             swapchain: None,
             swapchain_image_views: None,
+            render_pass: None,
         }
     }
 
@@ -100,6 +102,7 @@ impl<'a> App<'a> {
         self.init_physical_device();
         self.init_logical_device();
         self.init_swapchain();
+        self.init_render_pass();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -427,9 +430,54 @@ impl<'a> App<'a> {
         self.swapchain_image_views = Some(swapchain.get_image_views(device).unwrap());
         self.swapchain = Some(swapchain);
     }
+
+    fn init_render_pass(&mut self) {
+        let device = self.device.as_ref().unwrap();
+        let swapchain = self.swapchain.as_ref().unwrap();
+
+        let color_attachment = vk::AttachmentDescription::default()
+            .format(swapchain.format())
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
+
+        let color_attachment_ref = vk::AttachmentReference::default()
+            .attachment(0)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        let color_attachments = [color_attachment_ref];
+
+        let subpass = vk::SubpassDescription::default()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&color_attachments);
+
+        let dependency = vk::SubpassDependency::default()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::NONE)
+            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
+
+        let attachments = [color_attachment];
+        let subpasses = [subpass];
+        let dependencies = [dependency];
+        let render_pass_info = vk::RenderPassCreateInfo::default()
+            .attachments(&attachments)
+            .subpasses(&subpasses)
+            .dependencies(&dependencies);
+
+        let render_pass = unsafe { device.create_render_pass(&render_pass_info, None).unwrap() };
+
+        self.render_pass = Some(render_pass);
+    }
 }
 
 impl<'a> Drop for App<'a> {
+    // i should probably use macro lol
     fn drop(&mut self) {
         let vk_instance = self.vk_instance.take().unwrap();
         let device = self.device.take().unwrap();
@@ -437,7 +485,9 @@ impl<'a> Drop for App<'a> {
         let surface_instance = self.surface_instance.take().unwrap();
         let swapchain = self.swapchain.take().unwrap();
         let swapchain_image_views = self.swapchain_image_views.take().unwrap();
+        let render_pass = self.render_pass.take().unwrap();
         unsafe {
+            device.destroy_render_pass(render_pass, None);
             swapchain_image_views
                 .into_iter()
                 .for_each(|image_view| device.destroy_image_view(image_view, None));

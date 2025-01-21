@@ -116,6 +116,26 @@ impl<'a> Swapchain<'a> {
 
         vk::PresentModeKHR::FIFO // guaranteed to have
     }
+
+    pub fn device(&self) -> &khr::swapchain::Device {
+        &self.device
+    }
+
+    pub fn swapchain(&self) -> vk::SwapchainKHR {
+        self.swapchain
+    }
+
+    pub fn format(&self) -> vk::Format {
+        self.format
+    }
+
+    pub fn extent(&self) -> vk::Extent2D {
+        self.extent
+    }
+
+    pub fn images(&self) -> &Vec<vk::Image> {
+        &self.images
+    }
 }
 
 impl<'a> Drop for Swapchain<'a> {

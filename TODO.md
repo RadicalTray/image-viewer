@@ -12,7 +12,7 @@
     [x] createSwapchain()
         [x] abstract swapchain
     [x] createImageViews()
-    [ ] createRenderPass()
+    [x] createRenderPass()
     [ ] createDescriptorSetLayout()
     [ ] createGraphicsPipeline()
     [ ] createCommandPool()
