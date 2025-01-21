@@ -10,7 +10,7 @@
         [x] check for supports
     [x] createLogicalDevice()
     [x] createSwapchain()
-        [ ] abstract swapchain
+        [x] abstract swapchain
     [ ] createImageViews()
     [ ] createRenderPass()
     [ ] createDescriptorSetLayout()

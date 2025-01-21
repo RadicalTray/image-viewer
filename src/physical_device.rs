@@ -21,8 +21,8 @@ impl PhysicalDevice {
         &self,
         vk_instance: &ash::Instance,
         required_extension_names: &[*const c_char],
-    ) -> bool {
-        let supported_extensions = self.query_extension_properties(vk_instance).unwrap();
+    ) -> VkResult<bool> {
+        let supported_extensions = self.query_extension_properties(vk_instance)?;
         let supported_extension_names: Vec<&CStr> = supported_extensions
             .iter()
             .map(|x| x.extension_name_as_c_str().unwrap())
@@ -35,7 +35,7 @@ impl PhysicalDevice {
         };
         required_extension_names.retain(|x| !supported_extension_names.contains(x));
 
-        required_extension_names.len() == 0
+        Ok(required_extension_names.len() == 0)
     }
 
     pub fn query_extension_properties(

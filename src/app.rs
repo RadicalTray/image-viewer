@@ -1,5 +1,6 @@
 use crate::{
     constants::*, physical_device::PhysicalDevice, queue_family_indices::QueueFamilyIndices,
+    swapchain::Swapchain,
 };
 use ash::{
     ext, khr,
@@ -21,7 +22,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-pub struct App {
+pub struct App<'a> {
     vk_entry: ash::Entry,
     vk_instance: Option<ash::Instance>,
     window: Option<Window>,
@@ -34,14 +35,10 @@ pub struct App {
     device: Option<ash::Device>,
     graphics_queue: Option<vk::Queue>,
     present_queue: Option<vk::Queue>,
-    swapchain_device: Option<khr::swapchain::Device>,
-    swapchain: Option<vk::SwapchainKHR>,
-    swapchain_image_format: Option<vk::SurfaceFormatKHR>,
-    swapchain_extent: Option<vk::Extent2D>,
-    swapchain_images: Option<Vec<vk::Image>>,
+    swapchain: Option<Swapchain<'a>>,
 }
 
-impl ApplicationHandler for App {
+impl<'a> ApplicationHandler for App<'a> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.init(event_loop);
     }
@@ -60,7 +57,7 @@ impl ApplicationHandler for App {
 }
 
 /// clean up on Drop
-impl App {
+impl<'a> App<'a> {
     pub fn new() -> Self {
         App {
             vk_entry: ash::Entry::linked(),
@@ -75,11 +72,7 @@ impl App {
             device: None,
             graphics_queue: None,
             present_queue: None,
-            swapchain_device: None,
             swapchain: None,
-            swapchain_image_format: None,
-            swapchain_extent: None,
-            swapchain_images: None,
         }
     }
 
@@ -298,7 +291,9 @@ impl App {
 
             let supported_features = device.query_features(vk_instance);
 
-            if !(device.support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
+            if !(device
+                .support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
+                .unwrap()
                 && queue_family_indices.is_complete()
                 && check_physical_device_features(supported_features))
             {
@@ -366,26 +361,25 @@ impl App {
         let surface_instance = self.surface_instance.as_ref().unwrap();
         let surface = self.surface.as_ref().unwrap();
 
-        let swapchain_image_format = self.choose_swapchain_surface_format(
+        let format = Swapchain::choose_format(
             physical_device
                 .query_supported_surface_formats(surface_instance, *surface)
                 .unwrap(),
             vk::Format::B8G8R8A8_SRGB,
             vk::ColorSpaceKHR::SRGB_NONLINEAR,
         );
-        self.swapchain_image_format = Some(swapchain_image_format);
 
         let capabilities = physical_device
             .query_surface_capabilities(surface_instance, *surface)
             .unwrap();
-        let swapchain_extent = self.choose_swapchain_extent(capabilities);
-        self.swapchain_extent = Some(swapchain_extent);
+        let swapchain_extent =
+            Swapchain::choose_extent(self.window.as_ref().unwrap(), capabilities);
 
-        let present_mode = self.choose_swapchain_present_mode(
+        let present_mode = Swapchain::choose_present_mode(
             physical_device
                 .query_supported_present_modes(surface_instance, *surface)
                 .unwrap(),
-            vk::PresentModeKHR::FIFO, // power saving
+            vk::PresentModeKHR::FIFO, // prefer this for power saving
         );
 
         let max_image_count = capabilities.max_image_count;
@@ -399,8 +393,8 @@ impl App {
         let mut swapchain_info = vk::SwapchainCreateInfoKHR::default()
             .surface(*surface)
             .min_image_count(image_count)
-            .image_format(swapchain_image_format.format)
-            .image_color_space(swapchain_image_format.color_space)
+            .image_format(format.format)
+            .image_color_space(format.color_space)
             .image_extent(swapchain_extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
@@ -427,79 +421,19 @@ impl App {
 
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
-        let swapchain_device = khr::swapchain::Device::new(vk_instance, device);
-        let swapchain = unsafe {
-            swapchain_device
-                .create_swapchain(&swapchain_info, None)
-                .unwrap()
-        };
-        let swapchain_images = unsafe { swapchain_device.get_swapchain_images(swapchain).unwrap() };
-        self.swapchain_device = Some(swapchain_device);
-        self.swapchain = Some(swapchain);
-        self.swapchain_images = Some(swapchain_images);
-    }
-
-    fn choose_swapchain_surface_format(
-        &self,
-        available_formats: Vec<vk::SurfaceFormatKHR>,
-        preferred_format: vk::Format,
-        preferred_color_space: vk::ColorSpaceKHR,
-    ) -> vk::SurfaceFormatKHR {
-        for format in &available_formats {
-            if format.format == preferred_format && format.color_space == preferred_color_space {
-                return *format;
-            }
-        }
-
-        return available_formats[0];
-    }
-
-    fn choose_swapchain_extent(&self, capabilities: vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
-        if capabilities.current_extent.width != u32::MAX {
-            return capabilities.current_extent;
-        }
-
-        let window_size = self.window.as_ref().unwrap().inner_size();
-        let width = window_size.width;
-        let height = window_size.height;
-
-        vk::Extent2D {
-            width: width.clamp(
-                capabilities.min_image_extent.width,
-                capabilities.max_image_extent.width,
-            ),
-            height: height.clamp(
-                capabilities.min_image_extent.height,
-                capabilities.max_image_extent.height,
-            ),
-        }
-    }
-
-    fn choose_swapchain_present_mode(
-        &self,
-        available_modes: Vec<vk::PresentModeKHR>,
-        preferred_mode: vk::PresentModeKHR,
-    ) -> vk::PresentModeKHR {
-        for mode in available_modes {
-            if mode == preferred_mode {
-                return mode;
-            }
-        }
-
-        vk::PresentModeKHR::FIFO // guaranteed to have
+        self.swapchain = Some(Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap());
     }
 }
 
-impl Drop for App {
+impl<'a> Drop for App<'a> {
     fn drop(&mut self) {
         let vk_instance = self.vk_instance.take().unwrap();
         let device = self.device.take().unwrap();
-        let swapchain_device = self.swapchain_device.take().unwrap();
         let debug_messenger_instance = self.debug_messenger_instance.take().unwrap();
         let surface_instance = self.surface_instance.take().unwrap();
         let swapchain = self.swapchain.take().unwrap();
         unsafe {
-            swapchain_device.destroy_swapchain(swapchain, None);
+            drop(swapchain);
             surface_instance.destroy_surface(self.surface.take().unwrap(), None);
             debug_messenger_instance
                 .destroy_debug_utils_messenger(self.debug_messenger.take().unwrap(), None);
