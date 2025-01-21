@@ -36,6 +36,7 @@ pub struct App<'a> {
     graphics_queue: Option<vk::Queue>,
     present_queue: Option<vk::Queue>,
     swapchain: Option<Swapchain<'a>>,
+    swapchain_image_views: Option<Vec<vk::ImageView>>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -73,6 +74,7 @@ impl<'a> App<'a> {
             graphics_queue: None,
             present_queue: None,
             swapchain: None,
+            swapchain_image_views: None,
         }
     }
 
@@ -421,7 +423,9 @@ impl<'a> App<'a> {
 
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
-        self.swapchain = Some(Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap());
+        let swapchain = Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap();
+        self.swapchain_image_views = Some(swapchain.get_image_views(device).unwrap());
+        self.swapchain = Some(swapchain);
     }
 }
 
@@ -432,7 +436,11 @@ impl<'a> Drop for App<'a> {
         let debug_messenger_instance = self.debug_messenger_instance.take().unwrap();
         let surface_instance = self.surface_instance.take().unwrap();
         let swapchain = self.swapchain.take().unwrap();
+        let swapchain_image_views = self.swapchain_image_views.take().unwrap();
         unsafe {
+            swapchain_image_views
+                .into_iter()
+                .for_each(|image_view| device.destroy_image_view(image_view, None));
             drop(swapchain);
             surface_instance.destroy_surface(self.surface.take().unwrap(), None);
             debug_messenger_instance

@@ -1,4 +1,7 @@
-use std::ffi::{CStr, c_char};
+use std::{
+    error::Error,
+    ffi::{CStr, c_char},
+};
 
 use ash::{khr, prelude::*, vk};
 
@@ -21,12 +24,12 @@ impl PhysicalDevice {
         &self,
         vk_instance: &ash::Instance,
         required_extension_names: &[*const c_char],
-    ) -> VkResult<bool> {
+    ) -> Result<bool, Box<dyn Error>> {
         let supported_extensions = self.query_extension_properties(vk_instance)?;
-        let supported_extension_names: Vec<&CStr> = supported_extensions
-            .iter()
-            .map(|x| x.extension_name_as_c_str().unwrap())
-            .collect();
+        let mut supported_extension_names = Vec::with_capacity(supported_extensions.len());
+        for ext in &supported_extensions {
+            supported_extension_names.push(ext.extension_name_as_c_str()?);
+        }
         let mut required_extension_names: Vec<&CStr> = unsafe {
             required_extension_names
                 .iter()

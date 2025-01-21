@@ -11,7 +11,7 @@
     [x] createLogicalDevice()
     [x] createSwapchain()
         [x] abstract swapchain
-    [ ] createImageViews()
+    [x] createImageViews()
     [ ] createRenderPass()
     [ ] createDescriptorSetLayout()
     [ ] createGraphicsPipeline()

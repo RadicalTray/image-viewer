@@ -1,6 +1,6 @@
 use ash::{khr, prelude::*, vk};
 
-// lifetime is 100% not working, but everything is working because we're using no allocation_callbacks
+// lifetime is 100% not working properly, but everything is working because we're using no allocation_callbacks
 pub struct Swapchain<'a> {
     device: khr::swapchain::Device,
     swapchain: vk::SwapchainKHR,
@@ -30,6 +30,40 @@ impl<'a> Swapchain<'a> {
             images,
             allocation_callbacks,
         })
+    }
+
+    pub fn get_image_views(&self, vk_device: &ash::Device) -> VkResult<Vec<vk::ImageView>> {
+        let images = &self.images;
+        let format = self.format;
+        let allocation_callbacks = self.allocation_callbacks;
+        let mut image_views = Vec::with_capacity(images.len());
+        for image in images {
+            let swizzle_identity = vk::ComponentSwizzle::IDENTITY;
+            let image_view_info = vk::ImageViewCreateInfo::default()
+                .image(*image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(format)
+                .components(
+                    vk::ComponentMapping::default()
+                        .r(swizzle_identity)
+                        .g(swizzle_identity)
+                        .b(swizzle_identity)
+                        .a(swizzle_identity),
+                )
+                .subresource_range(
+                    vk::ImageSubresourceRange::default()
+                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                        .base_mip_level(0)
+                        .level_count(1)
+                        .base_array_layer(0)
+                        .layer_count(1),
+                );
+            image_views.push(unsafe {
+                vk_device.create_image_view(&image_view_info, allocation_callbacks)?
+            });
+        }
+
+        Ok(image_views)
     }
 
     pub fn choose_format(
