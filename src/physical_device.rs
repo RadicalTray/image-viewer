@@ -22,7 +22,7 @@ impl PhysicalDevice {
         vk_instance: &ash::Instance,
         required_extension_names: &[*const c_char],
     ) -> bool {
-        let supported_extensions = unsafe { self.get_extension_properties(vk_instance).unwrap() };
+        let supported_extensions = unsafe { self.query_extension_properties(vk_instance).unwrap() };
         let supported_extension_names: Vec<&CStr> = supported_extensions
             .iter()
             .map(|x| x.extension_name_as_c_str().unwrap())
@@ -38,21 +38,21 @@ impl PhysicalDevice {
         required_extension_names.len() == 0
     }
 
-    pub unsafe fn get_extension_properties(
+    pub unsafe fn query_extension_properties(
         &self,
         vk_instance: &ash::Instance,
     ) -> VkResult<Vec<vk::ExtensionProperties>> {
         unsafe { vk_instance.enumerate_device_extension_properties(self.device()) }
     }
 
-    pub unsafe fn get_queue_family_properties(
+    pub unsafe fn query_queue_family_properties(
         &self,
         vk_instance: &ash::Instance,
     ) -> Vec<vk::QueueFamilyProperties> {
         unsafe { vk_instance.get_physical_device_queue_family_properties(self.device()) }
     }
 
-    pub unsafe fn support_surface(
+    pub unsafe fn query_support_surface(
         &self,
         surface_instance: &khr::surface::Instance,
         queue_family_index: u32,
@@ -78,11 +78,11 @@ impl PhysicalDevice {
         }
     }
 
-    pub unsafe fn get_features(&self, vk_instance: &ash::Instance) -> vk::PhysicalDeviceFeatures {
+    pub unsafe fn query_features(&self, vk_instance: &ash::Instance) -> vk::PhysicalDeviceFeatures {
         unsafe { vk_instance.get_physical_device_features(self.device()) }
     }
 
-    pub unsafe fn get_surface_capabilities(
+    pub unsafe fn query_surface_capabilities(
         &self,
         surface_instance: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
@@ -90,7 +90,7 @@ impl PhysicalDevice {
         unsafe { surface_instance.get_physical_device_surface_capabilities(self.device(), surface) }
     }
 
-    pub unsafe fn get_supported_surface_formats(
+    pub unsafe fn query_supported_surface_formats(
         &self,
         surface_instance: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
@@ -98,7 +98,7 @@ impl PhysicalDevice {
         unsafe { surface_instance.get_physical_device_surface_formats(self.device(), surface) }
     }
 
-    pub unsafe fn get_supported_present_modes(
+    pub unsafe fn query_supported_present_modes(
         &self,
         surface_instance: &khr::surface::Instance,
         surface: vk::SurfaceKHR,

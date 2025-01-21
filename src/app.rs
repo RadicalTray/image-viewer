@@ -273,7 +273,7 @@ impl App {
         for device in physical_devices {
             let device = PhysicalDevice::new(device);
             let queue_family_properties =
-                unsafe { device.get_queue_family_properties(&vk_instance) };
+                unsafe { device.query_queue_family_properties(&vk_instance) };
 
             let surface_instance = self.surface_instance.as_ref().unwrap();
             let surface = self.surface.as_ref().unwrap();
@@ -282,7 +282,7 @@ impl App {
             for (i, property) in queue_family_properties.iter().enumerate() {
                 let support_surface = unsafe {
                     device
-                        .support_surface(surface_instance, i.try_into().unwrap(), *surface)
+                        .query_support_surface(surface_instance, i.try_into().unwrap(), *surface)
                         .unwrap()
                 };
 
@@ -299,7 +299,7 @@ impl App {
                 }
             }
 
-            let supported_features = unsafe { device.get_features(vk_instance) };
+            let supported_features = unsafe { device.query_features(vk_instance) };
 
             unsafe {
                 if !(device.support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
@@ -310,10 +310,10 @@ impl App {
                 }
 
                 let supported_surface_format = device
-                    .get_supported_surface_formats(surface_instance, *surface)
+                    .query_supported_surface_formats(surface_instance, *surface)
                     .unwrap();
                 let supported_present_modes = device
-                    .get_supported_present_modes(surface_instance, *surface)
+                    .query_supported_present_modes(surface_instance, *surface)
                     .unwrap();
 
                 if supported_surface_format.is_empty() || supported_present_modes.is_empty() {
@@ -376,7 +376,7 @@ impl App {
         let swapchain_image_format = self.choose_swapchain_surface_format(
             unsafe {
                 physical_device
-                    .get_supported_surface_formats(surface_instance, *surface)
+                    .query_supported_surface_formats(surface_instance, *surface)
                     .unwrap()
             },
             vk::Format::B8G8R8A8_SRGB,
@@ -386,7 +386,7 @@ impl App {
 
         let capabilities = unsafe {
             physical_device
-                .get_surface_capabilities(surface_instance, *surface)
+                .query_surface_capabilities(surface_instance, *surface)
                 .unwrap()
         };
         let swapchain_extent = self.choose_swapchain_extent(capabilities);
@@ -395,7 +395,7 @@ impl App {
         let present_mode = self.choose_swapchain_present_mode(
             unsafe {
                 physical_device
-                    .get_supported_present_modes(surface_instance, *surface)
+                    .query_supported_present_modes(surface_instance, *surface)
                     .unwrap()
             },
             vk::PresentModeKHR::FIFO, // power saving
