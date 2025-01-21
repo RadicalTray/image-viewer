@@ -272,19 +272,16 @@ impl App {
         let mut chosen_queue_family_indices = None;
         for device in physical_devices {
             let device = PhysicalDevice::new(device);
-            let queue_family_properties =
-                unsafe { device.query_queue_family_properties(&vk_instance) };
+            let queue_family_properties = device.query_queue_family_properties(&vk_instance);
 
             let surface_instance = self.surface_instance.as_ref().unwrap();
             let surface = self.surface.as_ref().unwrap();
 
             let mut queue_family_indices = QueueFamilyIndices::default();
             for (i, property) in queue_family_properties.iter().enumerate() {
-                let support_surface = unsafe {
-                    device
-                        .query_support_surface(surface_instance, i.try_into().unwrap(), *surface)
-                        .unwrap()
-                };
+                let support_surface = device
+                    .query_support_surface(surface_instance, i.try_into().unwrap(), *surface)
+                    .unwrap();
 
                 if support_surface {
                     queue_family_indices.present_family = Some(i.try_into().unwrap());
@@ -299,26 +296,24 @@ impl App {
                 }
             }
 
-            let supported_features = unsafe { device.query_features(vk_instance) };
+            let supported_features = device.query_features(vk_instance);
 
-            unsafe {
-                if !(device.support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
-                    && queue_family_indices.is_complete()
-                    && check_physical_device_features(supported_features))
-                {
-                    continue;
-                }
+            if !(device.support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
+                && queue_family_indices.is_complete()
+                && check_physical_device_features(supported_features))
+            {
+                continue;
+            }
 
-                let supported_surface_format = device
-                    .query_supported_surface_formats(surface_instance, *surface)
-                    .unwrap();
-                let supported_present_modes = device
-                    .query_supported_present_modes(surface_instance, *surface)
-                    .unwrap();
+            let supported_surface_format = device
+                .query_supported_surface_formats(surface_instance, *surface)
+                .unwrap();
+            let supported_present_modes = device
+                .query_supported_present_modes(surface_instance, *surface)
+                .unwrap();
 
-                if supported_surface_format.is_empty() || supported_present_modes.is_empty() {
-                    continue;
-                }
+            if supported_surface_format.is_empty() || supported_present_modes.is_empty() {
+                continue;
             }
 
             chosen_device = Some(device);
@@ -357,11 +352,9 @@ impl App {
             .enabled_features(&features)
             .enabled_extension_names(&ENABLED_DEVICE_EXTENSION_NAMES);
 
-        let device = unsafe {
-            physical_device
-                .create_logical_device(vk_instance, &device_info, None)
-                .unwrap()
-        };
+        let device = physical_device
+            .create_logical_device(vk_instance, &device_info, None)
+            .unwrap();
 
         self.graphics_queue = unsafe { Some(device.get_device_queue(graphics_family, 0)) };
         self.present_queue = unsafe { Some(device.get_device_queue(present_family, 0)) };
@@ -374,30 +367,24 @@ impl App {
         let surface = self.surface.as_ref().unwrap();
 
         let swapchain_image_format = self.choose_swapchain_surface_format(
-            unsafe {
-                physical_device
-                    .query_supported_surface_formats(surface_instance, *surface)
-                    .unwrap()
-            },
+            physical_device
+                .query_supported_surface_formats(surface_instance, *surface)
+                .unwrap(),
             vk::Format::B8G8R8A8_SRGB,
             vk::ColorSpaceKHR::SRGB_NONLINEAR,
         );
         self.swapchain_image_format = Some(swapchain_image_format);
 
-        let capabilities = unsafe {
-            physical_device
-                .query_surface_capabilities(surface_instance, *surface)
-                .unwrap()
-        };
+        let capabilities = physical_device
+            .query_surface_capabilities(surface_instance, *surface)
+            .unwrap();
         let swapchain_extent = self.choose_swapchain_extent(capabilities);
         self.swapchain_extent = Some(swapchain_extent);
 
         let present_mode = self.choose_swapchain_present_mode(
-            unsafe {
-                physical_device
-                    .query_supported_present_modes(surface_instance, *surface)
-                    .unwrap()
-            },
+            physical_device
+                .query_supported_present_modes(surface_instance, *surface)
+                .unwrap(),
             vk::PresentModeKHR::FIFO, // power saving
         );
 
