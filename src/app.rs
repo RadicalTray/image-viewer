@@ -42,6 +42,7 @@ pub struct App<'a> {
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
     graphics_pipeline_layout: Option<vk::PipelineLayout>,
     graphics_pipeline: Option<vk::Pipeline>,
+    swapchain_framebuffers: Option<Vec<vk::Framebuffer>>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -84,6 +85,7 @@ impl<'a> App<'a> {
             descriptor_set_layout: None,
             graphics_pipeline_layout: None,
             graphics_pipeline: None,
+            swapchain_framebuffers: None,
         }
     }
 
@@ -112,6 +114,7 @@ impl<'a> App<'a> {
         self.init_render_pass();
         self.init_descriptor_set_layout();
         self.init_graphics_pipeline();
+        self.init_framebuffers();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -610,6 +613,31 @@ impl<'a> App<'a> {
         self.graphics_pipeline_layout = Some(graphics_pipeline_layout);
         self.graphics_pipeline = Some(graphics_pipeline[0]);
     }
+
+    fn init_framebuffers(&mut self) {
+        let swapchain_image_views = self.swapchain_image_views.as_ref().unwrap();
+        let swapchain = self.swapchain.as_ref().unwrap();
+        let render_pass = *self.render_pass.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap();
+
+        let mut framebuffers = Vec::with_capacity(swapchain_image_views.len());
+        for image_view in swapchain_image_views {
+            let attachments = [*image_view];
+            let framebuffer_info = vk::FramebufferCreateInfo::default()
+                .render_pass(render_pass)
+                .attachments(&attachments)
+                .width(swapchain.extent().width)
+                .height(swapchain.extent().height)
+                .layers(1);
+
+            let framebuffer =
+                unsafe { device.create_framebuffer(&framebuffer_info, None).unwrap() };
+
+            framebuffers.push(framebuffer);
+        }
+
+        self.swapchain_framebuffers = Some(framebuffers);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -625,8 +653,12 @@ impl<'a> Drop for App<'a> {
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
         let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
+        let swapchain_framebuffers = self.swapchain_framebuffers.take().unwrap();
 
         unsafe {
+            swapchain_framebuffers
+                .into_iter()
+                .for_each(|framebuffer| device.destroy_framebuffer(framebuffer, None));
             device.destroy_pipeline_layout(graphics_pipeline_layout, None);
             device.destroy_pipeline(graphics_pipeline, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
