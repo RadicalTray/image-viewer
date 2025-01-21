@@ -43,6 +43,7 @@ pub struct App<'a> {
     graphics_pipeline_layout: Option<vk::PipelineLayout>,
     graphics_pipeline: Option<vk::Pipeline>,
     swapchain_framebuffers: Option<Vec<vk::Framebuffer>>,
+    command_pool: Option<vk::CommandPool>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -86,24 +87,11 @@ impl<'a> App<'a> {
             graphics_pipeline_layout: None,
             graphics_pipeline: None,
             swapchain_framebuffers: None,
+            command_pool: None,
         }
     }
 
-    fn assert_null(&self) {
-        assert!(self.vk_instance.is_none());
-        assert!(self.window.is_none());
-        assert!(self.surface_instance.is_none());
-        assert!(self.surface.is_none());
-        assert!(self.debug_messenger_instance.is_none());
-        assert!(self.debug_messenger.is_none());
-        assert!(self.physical_device.is_none());
-        assert!(self.device.is_none());
-        assert!(self.graphics_queue.is_none());
-        assert!(self.present_queue.is_none());
-    }
-
     fn init(&mut self, event_loop: &ActiveEventLoop) {
-        self.assert_null();
         self.init_vk_instance(event_loop);
         self.init_debug_messenger();
         self.init_window(event_loop);
@@ -115,6 +103,7 @@ impl<'a> App<'a> {
         self.init_descriptor_set_layout();
         self.init_graphics_pipeline();
         self.init_framebuffers();
+        self.init_command_pool();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -638,6 +627,23 @@ impl<'a> App<'a> {
 
         self.swapchain_framebuffers = Some(framebuffers);
     }
+
+    fn init_command_pool(&mut self) {
+        let indices = self.queue_family_indices.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap();
+
+        let command_pool_info = vk::CommandPoolCreateInfo::default()
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(indices.graphics_family.unwrap());
+
+        let command_pool = unsafe {
+            device
+                .create_command_pool(&command_pool_info, None)
+                .unwrap()
+        };
+
+        self.command_pool = Some(command_pool);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -654,8 +660,10 @@ impl<'a> Drop for App<'a> {
         let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
         let swapchain_framebuffers = self.swapchain_framebuffers.take().unwrap();
+        let command_pool = self.command_pool.take().unwrap();
 
         unsafe {
+            device.destroy_command_pool(command_pool, None);
             swapchain_framebuffers
                 .into_iter()
                 .for_each(|framebuffer| device.destroy_framebuffer(framebuffer, None));
