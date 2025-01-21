@@ -110,4 +110,11 @@ impl PhysicalDevice {
             surface_instance.get_physical_device_surface_present_modes(self.device(), surface)
         }
     }
+
+    pub fn query_memory_properties(
+        &self,
+        vk_instance: &ash::Instance,
+    ) -> vk::PhysicalDeviceMemoryProperties {
+        unsafe { vk_instance.get_physical_device_memory_properties(self.device()) }
+    }
 }

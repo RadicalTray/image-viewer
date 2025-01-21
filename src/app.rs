@@ -1,6 +1,7 @@
 use crate::{
-    constants::*, physical_device::PhysicalDevice, queue_family_indices::QueueFamilyIndices,
-    shader_module::ShaderModule, swapchain::Swapchain, vertex::Vertex,
+    buffer::Buffer, constants::*, physical_device::PhysicalDevice,
+    queue_family_indices::QueueFamilyIndices, shader_module::ShaderModule, swapchain::Swapchain,
+    vertex::Vertex,
 };
 use ash::{
     ext, khr,
@@ -42,6 +43,7 @@ pub struct App<'a> {
     graphics_pipeline_layout: Option<vk::PipelineLayout>,
     graphics_pipeline: Option<vk::Pipeline>,
     command_pool: Option<vk::CommandPool>,
+    vertex_buffer: Option<Buffer>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -84,6 +86,7 @@ impl<'a> App<'a> {
             graphics_pipeline_layout: None,
             graphics_pipeline: None,
             command_pool: None,
+            vertex_buffer: None,
         }
     }
 
@@ -100,6 +103,7 @@ impl<'a> App<'a> {
         self.init_graphics_pipeline();
         self.init_framebuffers();
         self.init_command_pool();
+        self.init_vertex_buffer();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -628,10 +632,104 @@ impl<'a> App<'a> {
     }
 
     fn init_vertex_buffer(&mut self) {
+        let vk_instance = self.vk_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
-        let buffer_size = vk::DeviceSize::from(
-            TryInto::<u32>::try_into(size_of::<Vertex>() * VERTICES.len()).unwrap(),
-        );
+        let physical_device = self.physical_device.as_ref().unwrap();
+        let device_mem_props = physical_device.query_memory_properties(vk_instance);
+
+        let buffer_size: vk::DeviceSize =
+            (size_of::<Vertex>() * VERTICES.len()).try_into().unwrap();
+        let buffer_info = vk::BufferCreateInfo::default()
+            .size(buffer_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let staging_buffer = Buffer::new(
+            device,
+            &buffer_info,
+            None,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            device_mem_props,
+        )
+        .unwrap();
+
+        unsafe {
+            let data_ptr = device
+                .map_memory(
+                    staging_buffer.memory(),
+                    0,
+                    buffer_size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .unwrap();
+            data_ptr.copy_from(VERTICES.as_ptr().cast(), buffer_size.try_into().unwrap());
+            device.unmap_memory(staging_buffer.memory());
+        };
+
+        let buffer_info = vk::BufferCreateInfo::default()
+            .size(buffer_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let vertex_buffer = Buffer::new(
+            device,
+            &buffer_info,
+            None,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            device_mem_props,
+        )
+        .unwrap();
+
+        self.copy_buffer_into(staging_buffer.buffer(), vertex_buffer.buffer(), buffer_size);
+
+        staging_buffer.cleanup(device, None);
+
+        self.vertex_buffer = Some(vertex_buffer);
+    }
+
+    fn copy_buffer_into(
+        &self,
+        src_buffer: vk::Buffer,
+        dst_buffer: vk::Buffer,
+        size: vk::DeviceSize,
+    ) {
+        let command_pool = *self.command_pool.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap();
+
+        let command_buffer_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        let command_buffer = unsafe {
+            device
+                .allocate_command_buffers(&command_buffer_info)
+                .unwrap()[0]
+        };
+
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe {
+            device
+                .begin_command_buffer(command_buffer, &begin_info)
+                .unwrap()
+        };
+
+        let copy_region = vk::BufferCopy::default().size(size);
+        let regions = [copy_region];
+        unsafe { device.cmd_copy_buffer(command_buffer, src_buffer, dst_buffer, &regions) };
+
+        unsafe { device.end_command_buffer(command_buffer).unwrap() };
+
+        let command_buffers = [command_buffer];
+        let submit_info = vk::SubmitInfo::default().command_buffers(&command_buffers);
+        let submits = [submit_info];
+        let graphics_queue = *self.graphics_queue.as_ref().unwrap();
+        unsafe {
+            device
+                .queue_submit(graphics_queue, &submits, vk::Fence::null())
+                .unwrap();
+            device.queue_wait_idle(graphics_queue).unwrap();
+            device.free_command_buffers(command_pool, &command_buffers);
+        };
     }
 }
 
@@ -648,8 +746,10 @@ impl<'a> Drop for App<'a> {
         let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
         let command_pool = self.command_pool.take().unwrap();
+        let vertex_buffer = self.vertex_buffer.take().unwrap();
 
         unsafe {
+            vertex_buffer.cleanup(&device, None);
             device.destroy_command_pool(command_pool, None);
             swapchain.cleanup(&device, None);
             device.destroy_pipeline_layout(graphics_pipeline_layout, None);
