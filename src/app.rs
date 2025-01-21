@@ -1,6 +1,6 @@
 use crate::{
     constants::*, physical_device::PhysicalDevice, queue_family_indices::QueueFamilyIndices,
-    swapchain::Swapchain,
+    shader_module::ShaderModule, swapchain::Swapchain, vertex::Vertex,
 };
 use ash::{
     ext, khr,
@@ -12,6 +12,7 @@ use ash::{
 use std::{
     collections::HashSet,
     ffi::{CStr, c_char, c_void},
+    fs,
 };
 use winit::{
     application::ApplicationHandler,
@@ -39,6 +40,8 @@ pub struct App<'a> {
     swapchain_image_views: Option<Vec<vk::ImageView>>,
     render_pass: Option<vk::RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
+    graphics_pipeline_layout: Option<vk::PipelineLayout>,
+    graphics_pipeline: Option<vk::Pipeline>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -79,6 +82,8 @@ impl<'a> App<'a> {
             swapchain_image_views: None,
             render_pass: None,
             descriptor_set_layout: None,
+            graphics_pipeline_layout: None,
+            graphics_pipeline: None,
         }
     }
 
@@ -106,6 +111,7 @@ impl<'a> App<'a> {
         self.init_swapchain();
         self.init_render_pass();
         self.init_descriptor_set_layout();
+        self.init_graphics_pipeline();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -497,6 +503,113 @@ impl<'a> App<'a> {
 
         self.descriptor_set_layout = Some(descriptor_set_layout);
     }
+
+    fn init_graphics_pipeline(&mut self) {
+        let device = self.device.as_ref().unwrap();
+
+        let vert_shader_code = fs::read("build/shaders/vert.spv").unwrap();
+        let frag_shader_code = fs::read("build/shaders/frag.spv").unwrap();
+
+        let vert_shader_module = ShaderModule::new(device, &vert_shader_code, None).unwrap();
+        let frag_shader_module = ShaderModule::new(device, &frag_shader_code, None).unwrap();
+
+        let vert_shader_stage_info = vk::PipelineShaderStageCreateInfo::default()
+            .stage(vk::ShaderStageFlags::VERTEX)
+            .module(vert_shader_module.module())
+            .name(c"main");
+
+        let frag_shader_stage_info = vk::PipelineShaderStageCreateInfo::default()
+            .stage(vk::ShaderStageFlags::FRAGMENT)
+            .module(frag_shader_module.module())
+            .name(c"main");
+
+        let shader_stage_infos = [vert_shader_stage_info, frag_shader_stage_info];
+        let bind_desc = Vertex::get_binding_descriptions();
+        let attr_desc = Vertex::get_attribute_descriptions();
+
+        let vertex_input_state_info = vk::PipelineVertexInputStateCreateInfo::default()
+            .vertex_binding_descriptions(&bind_desc)
+            .vertex_attribute_descriptions(&attr_desc);
+
+        let input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo::default()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false);
+
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state_info =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+
+        let viewport_state_info = vk::PipelineViewportStateCreateInfo::default()
+            .viewport_count(1)
+            .scissor_count(1);
+
+        let rasterization_state_info = vk::PipelineRasterizationStateCreateInfo::default()
+            .depth_clamp_enable(false)
+            .rasterizer_discard_enable(false)
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(vk::CullModeFlags::BACK)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE) // winit vs glfw?
+            .depth_bias_enable(false)
+            .line_width(1.0f32);
+
+        let multisample_state_info = vk::PipelineMultisampleStateCreateInfo::default()
+            .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+            .sample_shading_enable(false);
+
+        let color_blend_attachment_state = vk::PipelineColorBlendAttachmentState::default()
+            .blend_enable(false)
+            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .alpha_blend_op(vk::BlendOp::ADD)
+            .color_write_mask(
+                vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            );
+
+        let color_blend_attachments = [color_blend_attachment_state];
+        let color_blend_state_info = vk::PipelineColorBlendStateCreateInfo::default()
+            .logic_op_enable(false)
+            .attachments(&color_blend_attachments);
+
+        let descriptor_set_layouts = [*self.descriptor_set_layout.as_ref().unwrap()];
+        let pipeline_layout_info =
+            vk::PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
+
+        let graphics_pipeline_layout = unsafe {
+            device
+                .create_pipeline_layout(&pipeline_layout_info, None)
+                .unwrap()
+        };
+
+        let render_pass = *self.render_pass.as_ref().unwrap();
+        let graphics_pipeline_info = vk::GraphicsPipelineCreateInfo::default()
+            .stages(&shader_stage_infos)
+            .vertex_input_state(&vertex_input_state_info)
+            .input_assembly_state(&input_assembly_state_info)
+            .viewport_state(&viewport_state_info)
+            .rasterization_state(&rasterization_state_info)
+            .multisample_state(&multisample_state_info)
+            .color_blend_state(&color_blend_state_info)
+            .dynamic_state(&dynamic_state_info)
+            .layout(graphics_pipeline_layout)
+            .render_pass(render_pass)
+            .subpass(0);
+
+        let create_infos = [graphics_pipeline_info];
+        let graphics_pipeline = unsafe {
+            device
+                .create_graphics_pipelines(vk::PipelineCache::null(), &create_infos, None)
+                .unwrap()
+        };
+
+        self.graphics_pipeline_layout = Some(graphics_pipeline_layout);
+        self.graphics_pipeline = Some(graphics_pipeline[0]);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -510,8 +623,12 @@ impl<'a> Drop for App<'a> {
         let swapchain_image_views = self.swapchain_image_views.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
+        let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
+        let graphics_pipeline = self.graphics_pipeline.take().unwrap();
 
         unsafe {
+            device.destroy_pipeline_layout(graphics_pipeline_layout, None);
+            device.destroy_pipeline(graphics_pipeline, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
             swapchain_image_views
