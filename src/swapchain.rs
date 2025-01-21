@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use ash::{khr, prelude::*, vk};
 
 // lifetime is 100% not working properly, but everything is working because we're using no allocation_callbacks
@@ -7,6 +9,8 @@ pub struct Swapchain<'a> {
     format: vk::Format,
     extent: vk::Extent2D,
     images: Vec<vk::Image>,
+    image_views: Option<Vec<vk::ImageView>>,
+    framebuffers: Option<Vec<vk::Framebuffer>>,
     allocation_callbacks: Option<&'a vk::AllocationCallbacks<'a>>,
 }
 
@@ -29,10 +33,12 @@ impl<'a> Swapchain<'a> {
             extent,
             images,
             allocation_callbacks,
+            image_views: None,
+            framebuffers: None,
         })
     }
 
-    pub fn get_image_views(&self, vk_device: &ash::Device) -> VkResult<Vec<vk::ImageView>> {
+    pub fn init_image_views(&mut self, vk_device: &ash::Device) -> VkResult<()> {
         let images = &self.images;
         let format = self.format;
         let allocation_callbacks = self.allocation_callbacks;
@@ -63,7 +69,54 @@ impl<'a> Swapchain<'a> {
             });
         }
 
-        Ok(image_views)
+        self.image_views = Some(image_views);
+        Ok(())
+    }
+
+    pub fn init_framebuffers(
+        &mut self,
+        device: &ash::Device,
+        render_pass: vk::RenderPass,
+    ) -> Result<(), Box<dyn Error>> {
+        let swapchain_image_views = self.image_views.as_ref().unwrap();
+
+        let mut framebuffers = Vec::with_capacity(swapchain_image_views.len());
+        for image_view in swapchain_image_views {
+            let attachments = [*image_view];
+            let framebuffer_info = vk::FramebufferCreateInfo::default()
+                .render_pass(render_pass)
+                .attachments(&attachments)
+                .width(self.extent().width)
+                .height(self.extent().height)
+                .layers(1);
+
+            let framebuffer =
+                unsafe { device.create_framebuffer(&framebuffer_info, None).unwrap() };
+
+            framebuffers.push(framebuffer);
+        }
+
+        self.framebuffers = Some(framebuffers);
+        Ok(())
+    }
+
+    pub fn cleanup(
+        mut self,
+        device: &ash::Device,
+        allocation_callbacks: Option<&'a vk::AllocationCallbacks<'_>>,
+    ) {
+        unsafe {
+            self.framebuffers
+                .take()
+                .unwrap()
+                .into_iter()
+                .for_each(|x| device.destroy_framebuffer(x, allocation_callbacks));
+            self.image_views
+                .take()
+                .unwrap()
+                .into_iter()
+                .for_each(|x| device.destroy_image_view(x, allocation_callbacks));
+        }
     }
 
     pub fn choose_format(

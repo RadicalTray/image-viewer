@@ -1,11 +1,12 @@
 mod app;
+mod buffer;
 mod constants;
 mod physical_device;
 mod queue_family_indices;
-mod swapchain;
 mod shader_module;
-mod vertex;
+mod swapchain;
 mod uniform_buffer_object;
+mod vertex;
 
 use app::App;
 use winit::event_loop::{ControlFlow, EventLoop};

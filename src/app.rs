@@ -37,12 +37,10 @@ pub struct App<'a> {
     graphics_queue: Option<vk::Queue>,
     present_queue: Option<vk::Queue>,
     swapchain: Option<Swapchain<'a>>,
-    swapchain_image_views: Option<Vec<vk::ImageView>>,
     render_pass: Option<vk::RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
     graphics_pipeline_layout: Option<vk::PipelineLayout>,
     graphics_pipeline: Option<vk::Pipeline>,
-    swapchain_framebuffers: Option<Vec<vk::Framebuffer>>,
     command_pool: Option<vk::CommandPool>,
 }
 
@@ -81,12 +79,10 @@ impl<'a> App<'a> {
             graphics_queue: None,
             present_queue: None,
             swapchain: None,
-            swapchain_image_views: None,
             render_pass: None,
             descriptor_set_layout: None,
             graphics_pipeline_layout: None,
             graphics_pipeline: None,
-            swapchain_framebuffers: None,
             command_pool: None,
         }
     }
@@ -427,8 +423,8 @@ impl<'a> App<'a> {
 
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
-        let swapchain = Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap();
-        self.swapchain_image_views = Some(swapchain.get_image_views(device).unwrap());
+        let mut swapchain = Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap();
+        swapchain.init_image_views(device).unwrap();
         self.swapchain = Some(swapchain);
     }
 
@@ -604,28 +600,14 @@ impl<'a> App<'a> {
     }
 
     fn init_framebuffers(&mut self) {
-        let swapchain_image_views = self.swapchain_image_views.as_ref().unwrap();
-        let swapchain = self.swapchain.as_ref().unwrap();
-        let render_pass = *self.render_pass.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
+        let render_pass = self.render_pass.as_ref().unwrap();
 
-        let mut framebuffers = Vec::with_capacity(swapchain_image_views.len());
-        for image_view in swapchain_image_views {
-            let attachments = [*image_view];
-            let framebuffer_info = vk::FramebufferCreateInfo::default()
-                .render_pass(render_pass)
-                .attachments(&attachments)
-                .width(swapchain.extent().width)
-                .height(swapchain.extent().height)
-                .layers(1);
-
-            let framebuffer =
-                unsafe { device.create_framebuffer(&framebuffer_info, None).unwrap() };
-
-            framebuffers.push(framebuffer);
-        }
-
-        self.swapchain_framebuffers = Some(framebuffers);
+        self.swapchain
+            .as_mut()
+            .unwrap()
+            .init_framebuffers(device, *render_pass)
+            .unwrap();
     }
 
     fn init_command_pool(&mut self) {
@@ -644,6 +626,13 @@ impl<'a> App<'a> {
 
         self.command_pool = Some(command_pool);
     }
+
+    fn init_vertex_buffer(&mut self) {
+        let device = self.device.as_ref().unwrap();
+        let buffer_size = vk::DeviceSize::from(
+            TryInto::<u32>::try_into(size_of::<Vertex>() * VERTICES.len()).unwrap(),
+        );
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -654,27 +643,19 @@ impl<'a> Drop for App<'a> {
         let debug_messenger_instance = self.debug_messenger_instance.take().unwrap();
         let surface_instance = self.surface_instance.take().unwrap();
         let swapchain = self.swapchain.take().unwrap();
-        let swapchain_image_views = self.swapchain_image_views.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
         let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
-        let swapchain_framebuffers = self.swapchain_framebuffers.take().unwrap();
         let command_pool = self.command_pool.take().unwrap();
 
         unsafe {
             device.destroy_command_pool(command_pool, None);
-            swapchain_framebuffers
-                .into_iter()
-                .for_each(|framebuffer| device.destroy_framebuffer(framebuffer, None));
+            swapchain.cleanup(&device, None);
             device.destroy_pipeline_layout(graphics_pipeline_layout, None);
             device.destroy_pipeline(graphics_pipeline, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
-            swapchain_image_views
-                .into_iter()
-                .for_each(|image_view| device.destroy_image_view(image_view, None));
-            drop(swapchain);
             surface_instance.destroy_surface(self.surface.take().unwrap(), None);
             debug_messenger_instance
                 .destroy_debug_utils_messenger(self.debug_messenger.take().unwrap(), None);
