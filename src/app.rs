@@ -38,6 +38,7 @@ pub struct App<'a> {
     swapchain: Option<Swapchain<'a>>,
     swapchain_image_views: Option<Vec<vk::ImageView>>,
     render_pass: Option<vk::RenderPass>,
+    descriptor_set_layout: Option<vk::DescriptorSetLayout>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -77,6 +78,7 @@ impl<'a> App<'a> {
             swapchain: None,
             swapchain_image_views: None,
             render_pass: None,
+            descriptor_set_layout: None,
         }
     }
 
@@ -103,6 +105,7 @@ impl<'a> App<'a> {
         self.init_logical_device();
         self.init_swapchain();
         self.init_render_pass();
+        self.init_descriptor_set_layout();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -474,6 +477,26 @@ impl<'a> App<'a> {
 
         self.render_pass = Some(render_pass);
     }
+
+    fn init_descriptor_set_layout(&mut self) {
+        let device = self.device.as_ref().unwrap();
+
+        let ubo_layout_binding = vk::DescriptorSetLayoutBinding::default()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX);
+
+        let bindings = [ubo_layout_binding];
+        let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+        let descriptor_set_layout = unsafe {
+            device
+                .create_descriptor_set_layout(&layout_info, None)
+                .unwrap()
+        };
+
+        self.descriptor_set_layout = Some(descriptor_set_layout);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -486,7 +509,10 @@ impl<'a> Drop for App<'a> {
         let swapchain = self.swapchain.take().unwrap();
         let swapchain_image_views = self.swapchain_image_views.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
+        let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
+
         unsafe {
+            device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
             swapchain_image_views
                 .into_iter()
