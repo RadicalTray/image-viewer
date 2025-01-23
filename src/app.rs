@@ -46,6 +46,7 @@ pub struct App<'a> {
     vertex_buffer: Option<Buffer>,
     index_buffer: Option<Buffer>,
     uniform_buffers: Option<Vec<Buffer>>,
+    descriptor_pool: Option<vk::DescriptorPool>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -91,6 +92,7 @@ impl<'a> App<'a> {
             vertex_buffer: None,
             index_buffer: None,
             uniform_buffers: None,
+            descriptor_pool: None,
         }
     }
 
@@ -110,6 +112,7 @@ impl<'a> App<'a> {
         self.init_vertex_buffer();
         self.init_index_buffer();
         self.init_uniform_buffers();
+        self.init_descriptor_pool();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -793,7 +796,7 @@ impl<'a> App<'a> {
         let device_mem_props = physical_device.query_memory_properties(vk_instance);
 
         let buffer_size: vk::DeviceSize = size_of::<UniformBufferObject>().try_into().unwrap();
-        let mut uniform_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        let mut uniform_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT.try_into().unwrap());
 
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             let buffer_info = vk::BufferCreateInfo::default()
@@ -819,6 +822,19 @@ impl<'a> App<'a> {
 
         self.uniform_buffers = Some(uniform_buffers);
     }
+
+    fn init_descriptor_pool(&mut self) {
+        let device = self.device.as_ref().unwrap();
+
+        let pool_size = vk::DescriptorPoolSize::default().descriptor_count(MAX_FRAMES_IN_FLIGHT);
+        let pool_sizes = [pool_size];
+        let pool_info = vk::DescriptorPoolCreateInfo::default()
+            .max_sets(MAX_FRAMES_IN_FLIGHT)
+            .pool_sizes(&pool_sizes);
+
+        let pool = unsafe { device.create_descriptor_pool(&pool_info, None).unwrap() };
+        self.descriptor_pool = Some(pool);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -837,8 +853,10 @@ impl<'a> Drop for App<'a> {
         let vertex_buffer = self.vertex_buffer.take().unwrap();
         let index_buffer = self.index_buffer.take().unwrap();
         let uniform_buffers = self.uniform_buffers.take().unwrap();
+        let descriptor_pool = self.descriptor_pool.take().unwrap();
 
         unsafe {
+            device.destroy_descriptor_pool(descriptor_pool, None);
             uniform_buffers
                 .into_iter()
                 .for_each(|x| x.cleanup(&device, None));

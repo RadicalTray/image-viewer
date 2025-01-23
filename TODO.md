@@ -20,7 +20,7 @@
     [x] createVertexBuffer()
     [x] createIndexBuffer()
     [x] createUniformBuffers()
-    [ ] createDescriptorPool()
+    [x] createDescriptorPool()
     [ ] createDescriptorSets()
     [ ] createCommandBuffers()
     [ ] createSyncObjects()
