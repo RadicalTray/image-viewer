@@ -47,6 +47,7 @@ pub struct App<'a> {
     index_buffer: Option<Buffer>,
     uniform_buffers: Option<Vec<Buffer>>,
     descriptor_pool: Option<vk::DescriptorPool>,
+    descriptor_sets: Option<Vec<vk::DescriptorSet>>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -93,6 +94,7 @@ impl<'a> App<'a> {
             index_buffer: None,
             uniform_buffers: None,
             descriptor_pool: None,
+            descriptor_sets: None,
         }
     }
 
@@ -113,6 +115,7 @@ impl<'a> App<'a> {
         self.init_index_buffer();
         self.init_uniform_buffers();
         self.init_descriptor_pool();
+        self.init_descriptor_sets();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -796,7 +799,7 @@ impl<'a> App<'a> {
         let device_mem_props = physical_device.query_memory_properties(vk_instance);
 
         let buffer_size: vk::DeviceSize = size_of::<UniformBufferObject>().try_into().unwrap();
-        let mut uniform_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT.try_into().unwrap());
+        let mut uniform_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
 
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             let buffer_info = vk::BufferCreateInfo::default()
@@ -826,14 +829,45 @@ impl<'a> App<'a> {
     fn init_descriptor_pool(&mut self) {
         let device = self.device.as_ref().unwrap();
 
-        let pool_size = vk::DescriptorPoolSize::default().descriptor_count(MAX_FRAMES_IN_FLIGHT);
+        let pool_size = vk::DescriptorPoolSize::default()
+            .descriptor_count(MAX_FRAMES_IN_FLIGHT.try_into().unwrap());
         let pool_sizes = [pool_size];
         let pool_info = vk::DescriptorPoolCreateInfo::default()
-            .max_sets(MAX_FRAMES_IN_FLIGHT)
+            .max_sets(MAX_FRAMES_IN_FLIGHT.try_into().unwrap())
             .pool_sizes(&pool_sizes);
 
         let pool = unsafe { device.create_descriptor_pool(&pool_info, None).unwrap() };
         self.descriptor_pool = Some(pool);
+    }
+
+    fn init_descriptor_sets(&mut self) {
+        let layout = *self.descriptor_set_layout.as_ref().unwrap();
+        let descriptor_pool = *self.descriptor_pool.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap();
+        let uniform_buffers = self.uniform_buffers.as_ref().unwrap();
+
+        let layouts = vec![layout; MAX_FRAMES_IN_FLIGHT.try_into().unwrap()];
+        let alloc_info = vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(descriptor_pool)
+            .set_layouts(&layouts);
+        let sets = unsafe { device.allocate_descriptor_sets(&alloc_info).unwrap() };
+
+        for i in 0..MAX_FRAMES_IN_FLIGHT {
+            let buffer_info = vk::DescriptorBufferInfo::default()
+                .buffer(uniform_buffers[i].buffer())
+                .offset(0)
+                .range(size_of::<UniformBufferObject>().try_into().unwrap());
+            let buffer_infos = [buffer_info];
+            let desc_write = vk::WriteDescriptorSet::default()
+                .dst_set(sets[i])
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_count(1)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(&buffer_infos);
+            unsafe { device.update_descriptor_sets(&[desc_write], &[]) };
+        }
+        self.descriptor_sets = Some(sets);
     }
 }
 

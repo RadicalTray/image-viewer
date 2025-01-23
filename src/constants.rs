@@ -2,7 +2,7 @@ use crate::vertex::Vertex;
 use ash::vk;
 use std::ffi::c_char;
 
-pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 pub const DEBUG_ENABLED_EXTENSION_NAMES: [*const c_char; 1] = [vk::EXT_DEBUG_UTILS_NAME.as_ptr()];
 pub const DEBUG_ENABLED_LAYER_NAMES: [*const c_char; 1] = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
 pub const ENABLED_DEVICE_EXTENSION_NAMES: [*const c_char; 1] = [vk::KHR_SWAPCHAIN_NAME.as_ptr()];
