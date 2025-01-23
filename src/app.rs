@@ -48,6 +48,7 @@ pub struct App<'a> {
     uniform_buffers: Option<Vec<Buffer>>,
     descriptor_pool: Option<vk::DescriptorPool>,
     descriptor_sets: Option<Vec<vk::DescriptorSet>>,
+    command_buffers: Option<Vec<vk::CommandBuffer>>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -95,6 +96,7 @@ impl<'a> App<'a> {
             uniform_buffers: None,
             descriptor_pool: None,
             descriptor_sets: None,
+            command_buffers: None,
         }
     }
 
@@ -116,6 +118,7 @@ impl<'a> App<'a> {
         self.init_uniform_buffers();
         self.init_descriptor_pool();
         self.init_descriptor_sets();
+        self.init_command_buffers();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -868,6 +871,19 @@ impl<'a> App<'a> {
             unsafe { device.update_descriptor_sets(&[desc_write], &[]) };
         }
         self.descriptor_sets = Some(sets);
+    }
+
+    fn init_command_buffers(&mut self) {
+        let device = self.device.as_ref().unwrap();
+        let command_pool = *self.command_pool.as_ref().unwrap();
+
+        let alloc_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(MAX_FRAMES_IN_FLIGHT.try_into().unwrap());
+
+        let command_buffers = unsafe { device.allocate_command_buffers(&alloc_info).unwrap() };
+        self.command_buffers = Some(command_buffers);
     }
 }
 
