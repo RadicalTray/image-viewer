@@ -19,7 +19,7 @@
     [x] createFramebuffers()
     [x] createVertexBuffer()
     [x] createIndexBuffer()
-    [ ] createUniformBuffers()
+    [x] createUniformBuffers()
     [ ] createDescriptorPool()
     [ ] createDescriptorSets()
     [ ] createCommandBuffers()

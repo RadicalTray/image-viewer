@@ -1,5 +1,7 @@
+use ash::prelude::VkResult;
 use ash::vk;
 use std::error::Error;
+use std::ffi::c_void;
 
 #[derive(Debug)]
 pub enum BufferCreationError {
@@ -7,8 +9,10 @@ pub enum BufferCreationError {
 }
 
 pub struct Buffer {
+    size: vk::DeviceSize,
     buffer: vk::Buffer,
     memory: vk::DeviceMemory,
+    ptr: Option<*mut c_void>,
 }
 
 impl Buffer {
@@ -19,6 +23,7 @@ impl Buffer {
         mem_props: vk::MemoryPropertyFlags,
         device_mem_props: vk::PhysicalDeviceMemoryProperties,
     ) -> Result<Self, Box<dyn Error>> {
+        let size = buffer_info.size;
         let buffer = unsafe { device.create_buffer(buffer_info, allocation_callbacks)? };
         let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
 
@@ -36,7 +41,12 @@ impl Buffer {
         let memory = unsafe { device.allocate_memory(&alloc_info, allocation_callbacks)? };
         unsafe { device.bind_buffer_memory(buffer, memory, 0)? };
 
-        Ok(Self { buffer, memory })
+        Ok(Self {
+            size,
+            buffer,
+            memory,
+            ptr: None,
+        })
     }
 
     pub fn find_memory_type_index(
@@ -53,6 +63,23 @@ impl Buffer {
         }
 
         Err(BufferCreationError::MemoryTypeNotFound)
+    }
+
+    pub fn map_memory(
+        &mut self,
+        device: &ash::Device,
+        offset: vk::DeviceSize,
+        flags: vk::MemoryMapFlags,
+    ) -> VkResult<()> {
+        self.ptr = unsafe { Some(device.map_memory(self.memory(), offset, self.size, flags)?) };
+        Ok(())
+    }
+
+    pub fn unmap_memory(&mut self, device: &ash::Device) {
+        self.ptr = None;
+        unsafe {
+            device.unmap_memory(self.memory());
+        }
     }
 
     pub fn cleanup(
@@ -72,6 +99,14 @@ impl Buffer {
 
     pub fn buffer(&self) -> vk::Buffer {
         self.buffer
+    }
+
+    pub fn ptr(&self) -> Option<*mut c_void> {
+        self.ptr
+    }
+
+    pub fn size(&self) -> vk::DeviceSize {
+        self.size
     }
 }
 

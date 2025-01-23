@@ -1,7 +1,7 @@
 use crate::{
     buffer::Buffer, constants::*, physical_device::PhysicalDevice,
     queue_family_indices::QueueFamilyIndices, shader_module::ShaderModule, swapchain::Swapchain,
-    vertex::Vertex,
+    uniform_buffer_object::UniformBufferObject, vertex::Vertex,
 };
 use ash::{
     ext, khr,
@@ -45,6 +45,7 @@ pub struct App<'a> {
     command_pool: Option<vk::CommandPool>,
     vertex_buffer: Option<Buffer>,
     index_buffer: Option<Buffer>,
+    uniform_buffers: Option<Vec<Buffer>>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -89,6 +90,7 @@ impl<'a> App<'a> {
             command_pool: None,
             vertex_buffer: None,
             index_buffer: None,
+            uniform_buffers: None,
         }
     }
 
@@ -107,6 +109,7 @@ impl<'a> App<'a> {
         self.init_command_pool();
         self.init_vertex_buffer();
         self.init_index_buffer();
+        self.init_uniform_buffers();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -645,7 +648,7 @@ impl<'a> App<'a> {
             .size(buffer_size)
             .usage(vk::BufferUsageFlags::TRANSFER_SRC)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        let staging_buffer = Buffer::new(
+        let mut staging_buffer = Buffer::new(
             device,
             &buffer_info,
             None,
@@ -655,16 +658,14 @@ impl<'a> App<'a> {
         .unwrap();
 
         unsafe {
-            let data_ptr = device
-                .map_memory(
-                    staging_buffer.memory(),
-                    0,
-                    buffer_size,
-                    vk::MemoryMapFlags::empty(),
-                )
+            staging_buffer
+                .map_memory(device, 0, vk::MemoryMapFlags::empty())
                 .unwrap();
-            data_ptr.copy_from(VERTICES.as_ptr().cast(), buffer_size.try_into().unwrap());
-            device.unmap_memory(staging_buffer.memory());
+            staging_buffer
+                .ptr()
+                .unwrap()
+                .copy_from(VERTICES.as_ptr().cast(), buffer_size.try_into().unwrap());
+            staging_buffer.unmap_memory(device);
         };
 
         let buffer_info = vk::BufferCreateInfo::default()
@@ -745,7 +746,7 @@ impl<'a> App<'a> {
             .size(buffer_size)
             .usage(vk::BufferUsageFlags::TRANSFER_SRC)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        let staging_buffer = Buffer::new(
+        let mut staging_buffer = Buffer::new(
             device,
             &buffer_info,
             None,
@@ -755,16 +756,14 @@ impl<'a> App<'a> {
         .unwrap();
 
         unsafe {
-            let data_ptr = device
-                .map_memory(
-                    staging_buffer.memory(),
-                    0,
-                    buffer_size,
-                    vk::MemoryMapFlags::empty(),
-                )
+            staging_buffer
+                .map_memory(device, 0, vk::MemoryMapFlags::empty())
                 .unwrap();
-            data_ptr.copy_from(INDICES.as_ptr().cast(), buffer_size.try_into().unwrap());
-            device.unmap_memory(staging_buffer.memory());
+            staging_buffer
+                .ptr()
+                .unwrap()
+                .copy_from(INDICES.as_ptr().cast(), buffer_size.try_into().unwrap());
+            staging_buffer.unmap_memory(device);
         };
 
         let buffer_info = vk::BufferCreateInfo::default()
@@ -786,6 +785,40 @@ impl<'a> App<'a> {
 
         self.index_buffer = Some(index_buffer);
     }
+
+    fn init_uniform_buffers(&mut self) {
+        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap();
+        let physical_device = self.physical_device.as_ref().unwrap();
+        let device_mem_props = physical_device.query_memory_properties(vk_instance);
+
+        let buffer_size: vk::DeviceSize = size_of::<UniformBufferObject>().try_into().unwrap();
+        let mut uniform_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+
+        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+            let buffer_info = vk::BufferCreateInfo::default()
+                .size(buffer_size)
+                .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
+                .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+            let mut buffer = Buffer::new(
+                device,
+                &buffer_info,
+                None,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                device_mem_props,
+            )
+            .unwrap();
+
+            buffer
+                .map_memory(device, 0, vk::MemoryMapFlags::empty())
+                .unwrap();
+
+            uniform_buffers.push(buffer);
+        }
+
+        self.uniform_buffers = Some(uniform_buffers);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -803,8 +836,12 @@ impl<'a> Drop for App<'a> {
         let command_pool = self.command_pool.take().unwrap();
         let vertex_buffer = self.vertex_buffer.take().unwrap();
         let index_buffer = self.index_buffer.take().unwrap();
+        let uniform_buffers = self.uniform_buffers.take().unwrap();
 
         unsafe {
+            uniform_buffers
+                .into_iter()
+                .for_each(|x| x.cleanup(&device, None));
             index_buffer.cleanup(&device, None);
             vertex_buffer.cleanup(&device, None);
             device.destroy_command_pool(command_pool, None);
