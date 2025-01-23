@@ -24,8 +24,10 @@
     [x] createDescriptorSets()
     [x] createCommandBuffers()
     [x] createSyncObjects()
-    [ ] Render something to window
-    [ ] recreateSwapchain()
+    [-] Render something to window
+        [x] Open a window
+        [ ] Render that rectangle
+    [x] recreateSwapchain()
     [ ] createDepthResources()
     [ ] createTextureImage()
     [ ] createTextureImageView()

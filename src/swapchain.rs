@@ -170,6 +170,18 @@ impl<'a> Swapchain<'a> {
         vk::PresentModeKHR::FIFO // guaranteed to have
     }
 
+    pub fn acquire_next_image(
+        &self,
+        timeout: u64,
+        semaphore: vk::Semaphore,
+        fence: vk::Fence,
+    ) -> VkResult<(u32, bool)> {
+        unsafe {
+            self.device()
+                .acquire_next_image(self.swapchain(), timeout, semaphore, fence)
+        }
+    }
+
     pub fn device(&self) -> &khr::swapchain::Device {
         &self.device
     }
@@ -186,8 +198,8 @@ impl<'a> Swapchain<'a> {
         self.extent
     }
 
-    pub fn images(&self) -> &Vec<vk::Image> {
-        &self.images
+    pub fn framebuffers(&self) -> Option<&Vec<vk::Framebuffer>> {
+        self.framebuffers.as_ref()
     }
 }
 

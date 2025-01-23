@@ -10,6 +10,8 @@ use ash::{
         DebugUtilsMessengerCallbackDataEXT,
     },
 };
+use core::f32;
+use glam::{Mat4, Vec3};
 use std::{
     collections::HashSet,
     ffi::{CStr, c_char, c_void},
@@ -52,6 +54,8 @@ pub struct App<'a> {
     image_available_sems: Option<Vec<vk::Semaphore>>,
     render_finished_sems: Option<Vec<vk::Semaphore>>,
     in_flight_fences: Option<Vec<vk::Fence>>,
+    current_frame: usize,
+    start_time: std::time::SystemTime,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -65,7 +69,7 @@ impl<'a> ApplicationHandler for App<'a> {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                event_loop.exit();
+                self.draw();
             }
             _ => (),
         }
@@ -103,6 +107,8 @@ impl<'a> App<'a> {
             image_available_sems: None,
             render_finished_sems: None,
             in_flight_fences: None,
+            current_frame: 0,
+            start_time: std::time::SystemTime::now(),
         }
     }
 
@@ -901,7 +907,7 @@ impl<'a> App<'a> {
         let mut in_flight_fences = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
 
         let sem_info = vk::SemaphoreCreateInfo::default();
-        let fence_info = vk::FenceCreateInfo::default();
+        let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
 
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             unsafe {
@@ -914,6 +920,226 @@ impl<'a> App<'a> {
         self.image_available_sems = Some(image_available_sems);
         self.render_finished_sems = Some(render_finished_sems);
         self.in_flight_fences = Some(in_flight_fences);
+    }
+
+    fn draw(&mut self) {
+        let device = self.device.as_ref().unwrap();
+        let in_flight_fences = self.in_flight_fences.as_ref().unwrap();
+        let command_buffers = self.command_buffers.as_ref().unwrap();
+        let current_frame = self.current_frame;
+        let swapchain = self.swapchain.as_ref().unwrap();
+
+        let command_buffer = command_buffers[current_frame];
+
+        unsafe {
+            device
+                .wait_for_fences(&[in_flight_fences[current_frame]], true, u64::MAX)
+                .unwrap();
+
+            let image_available_sems = self.image_available_sems.as_ref().unwrap();
+            let (image_index, _is_suboptimal) = match swapchain.acquire_next_image(
+                u64::MAX,
+                image_available_sems[current_frame],
+                vk::Fence::null(),
+            ) {
+                Ok(t) => t,
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    self.recreate_swapchain();
+                    return;
+                }
+                _ => panic!(),
+            };
+
+            device
+                .reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())
+                .unwrap();
+
+            self.record_command_buffer(command_buffer, image_index);
+            self.update_uniform_buffers(current_frame);
+
+            let swapchain = self.swapchain.as_ref().unwrap();
+            let device = self.device.as_ref().unwrap();
+            let image_available_sems = self.image_available_sems.as_ref().unwrap();
+            let render_finished_sems = self.render_finished_sems.as_ref().unwrap();
+            let command_buffers = self.command_buffers.as_ref().unwrap();
+            let in_flight_fences = self.in_flight_fences.as_ref().unwrap();
+
+            let wait_sems = [image_available_sems[current_frame]];
+            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            let command_buffers = [command_buffers[current_frame]];
+            let signal_sems = [render_finished_sems[current_frame]];
+            let submit_info = vk::SubmitInfo::default()
+                .wait_semaphores(&wait_sems)
+                .wait_dst_stage_mask(&wait_stages)
+                .command_buffers(&command_buffers)
+                .signal_semaphores(&signal_sems);
+
+            device
+                .reset_fences(&[in_flight_fences[current_frame]])
+                .unwrap();
+
+            device
+                .queue_submit(
+                    *self.graphics_queue.as_ref().unwrap(),
+                    &[submit_info],
+                    in_flight_fences[current_frame],
+                )
+                .unwrap();
+
+            let swapchains = [swapchain.swapchain()];
+            let image_indices = [image_index];
+            let present_info = vk::PresentInfoKHR::default()
+                .wait_semaphores(&signal_sems)
+                .swapchains(&swapchains)
+                .image_indices(&image_indices);
+
+            match swapchain
+                .device()
+                .queue_present(*self.present_queue.as_ref().unwrap(), &present_info)
+            {
+                Ok(is_suboptimal) => {
+                    if is_suboptimal {
+                        self.recreate_swapchain()
+                    }
+                }
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain(),
+                _ => panic!(),
+            }
+        }
+
+        self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+    }
+
+    fn record_command_buffer(&mut self, command_buffer: vk::CommandBuffer, image_index: u32) {
+        let device = self.device.as_ref().unwrap();
+        let render_pass = *self.render_pass.as_ref().unwrap();
+        let swapchain = self.swapchain.as_ref().unwrap();
+        let graphics_pipeline = *self.graphics_pipeline.as_ref().unwrap();
+        let vertex_buffer = self.vertex_buffer.as_ref().unwrap();
+        let index_buffer = self.index_buffer.as_ref().unwrap();
+        let pipeline_layout = *self.graphics_pipeline_layout.as_ref().unwrap();
+        let descriptor_sets = self.descriptor_sets.as_ref().unwrap();
+        let current_frame = self.current_frame;
+
+        let image_index: usize = image_index.try_into().unwrap();
+        let framebuffers = swapchain.framebuffers().unwrap();
+        let framebuffer = framebuffers[image_index];
+
+        unsafe {
+            let begin_info = vk::CommandBufferBeginInfo::default();
+            device
+                .begin_command_buffer(command_buffer, &begin_info)
+                .unwrap();
+
+            let clear_values = [{
+                let mut clear_color = vk::ClearValue::default();
+                clear_color.color.float32 = [0.0, 0.0, 0.0, 1.0];
+                clear_color
+            }];
+            let render_pass_info = vk::RenderPassBeginInfo::default()
+                .render_pass(render_pass)
+                .framebuffer(framebuffer)
+                .render_area(vk::Rect2D {
+                    offset: vk::Offset2D::default().x(0).y(0),
+                    extent: swapchain.extent(),
+                })
+                .clear_values(&clear_values);
+
+            device.cmd_begin_render_pass(
+                command_buffer,
+                &render_pass_info,
+                vk::SubpassContents::INLINE,
+            );
+            device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                graphics_pipeline,
+            );
+            device.cmd_bind_vertex_buffers(command_buffer, 0, &[vertex_buffer.buffer()], &[0]);
+            device.cmd_bind_index_buffer(
+                command_buffer,
+                index_buffer.buffer(),
+                0,
+                vk::IndexType::UINT32,
+            );
+            device.cmd_set_viewport(command_buffer, 0, &[vk::Viewport::default()
+                .x(0.0)
+                .y(0.0)
+                .width(swapchain.extent().width as f32)
+                .height(swapchain.extent().height as f32)
+                .min_depth(0.0)
+                .max_depth(1.0)]);
+            device.cmd_set_scissor(command_buffer, 0, &[vk::Rect2D::default()
+                .offset(vk::Offset2D::default().x(0).y(0))
+                .extent(swapchain.extent())]);
+
+            device.cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline_layout,
+                0,
+                &[descriptor_sets[current_frame]],
+                &[],
+            );
+
+            device.cmd_draw_indexed(
+                command_buffer,
+                INDICES.len().try_into().unwrap(),
+                1,
+                0,
+                0,
+                0,
+            );
+            device.cmd_end_render_pass(command_buffer);
+            device.end_command_buffer(command_buffer).unwrap();
+        }
+    }
+
+    fn update_uniform_buffers(&mut self, current_frame: usize) {
+        let swapchain = self.swapchain.as_ref().unwrap();
+        let start_time = self.start_time;
+        let uniform_buffers = self.uniform_buffers.as_ref().unwrap();
+
+        let dt = start_time.elapsed().unwrap().as_secs_f32();
+        let pi = f32::consts::PI;
+
+        let ubo = UniformBufferObject {
+            model: Mat4::from_cols_array_2d(&[
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+            ]) * Mat4::from_rotation_y(dt * pi / 2.0),
+            view: Mat4::look_at_rh(
+                Vec3::from_array([2.0, 2.0, 2.0]),
+                Vec3::from_array([0.0, 0.0, 0.0]),
+                Vec3::from_array([0.0, 0.0, 1.0]),
+            ),
+            proj: Mat4::perspective_lh(
+                pi / 4.0,
+                swapchain.extent().width as f32 / swapchain.extent().height as f32,
+                0.1,
+                10.0,
+            ),
+        };
+
+        unsafe {
+            uniform_buffers[current_frame]
+                .ptr()
+                .unwrap()
+                .copy_from(&raw const ubo as *const _, size_of_val(&ubo))
+        };
+    }
+
+    fn recreate_swapchain(&mut self) {
+        let swapchain = self.swapchain.take().unwrap();
+        let device = self.device.as_ref().unwrap();
+
+        unsafe { device.device_wait_idle().unwrap() };
+
+        swapchain.cleanup(device, None);
+        self.init_swapchain();
+        self.init_framebuffers();
     }
 }
 
@@ -942,6 +1168,8 @@ impl<'a> Drop for App<'a> {
             .chain(render_finished_sems.into_iter());
 
         unsafe {
+            device.device_wait_idle().unwrap();
+
             sems_chain.for_each(|x| device.destroy_semaphore(x, None));
             in_flight_fences
                 .into_iter()
