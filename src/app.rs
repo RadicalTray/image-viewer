@@ -44,6 +44,7 @@ pub struct App<'a> {
     graphics_pipeline: Option<vk::Pipeline>,
     command_pool: Option<vk::CommandPool>,
     vertex_buffer: Option<Buffer>,
+    index_buffer: Option<Buffer>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -87,6 +88,7 @@ impl<'a> App<'a> {
             graphics_pipeline: None,
             command_pool: None,
             vertex_buffer: None,
+            index_buffer: None,
         }
     }
 
@@ -104,6 +106,7 @@ impl<'a> App<'a> {
         self.init_framebuffers();
         self.init_command_pool();
         self.init_vertex_buffer();
+        self.init_index_buffer();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -637,8 +640,7 @@ impl<'a> App<'a> {
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(vk_instance);
 
-        let buffer_size: vk::DeviceSize =
-            (size_of::<Vertex>() * VERTICES.len()).try_into().unwrap();
+        let buffer_size: vk::DeviceSize = size_of_val(&VERTICES).try_into().unwrap();
         let buffer_info = vk::BufferCreateInfo::default()
             .size(buffer_size)
             .usage(vk::BufferUsageFlags::TRANSFER_SRC)
@@ -731,6 +733,59 @@ impl<'a> App<'a> {
             device.free_command_buffers(command_pool, &command_buffers);
         };
     }
+
+    fn init_index_buffer(&mut self) {
+        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap();
+        let physical_device = self.physical_device.as_ref().unwrap();
+        let device_mem_props = physical_device.query_memory_properties(vk_instance);
+
+        let buffer_size: vk::DeviceSize = size_of_val(&INDICES).try_into().unwrap();
+        let buffer_info = vk::BufferCreateInfo::default()
+            .size(buffer_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let staging_buffer = Buffer::new(
+            device,
+            &buffer_info,
+            None,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            device_mem_props,
+        )
+        .unwrap();
+
+        unsafe {
+            let data_ptr = device
+                .map_memory(
+                    staging_buffer.memory(),
+                    0,
+                    buffer_size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .unwrap();
+            data_ptr.copy_from(INDICES.as_ptr().cast(), buffer_size.try_into().unwrap());
+            device.unmap_memory(staging_buffer.memory());
+        };
+
+        let buffer_info = vk::BufferCreateInfo::default()
+            .size(buffer_size)
+            .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let index_buffer = Buffer::new(
+            device,
+            &buffer_info,
+            None,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            device_mem_props,
+        )
+        .unwrap();
+
+        self.copy_buffer_into(staging_buffer.buffer(), index_buffer.buffer(), buffer_size);
+
+        staging_buffer.cleanup(device, None);
+
+        self.index_buffer = Some(index_buffer);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -747,8 +802,10 @@ impl<'a> Drop for App<'a> {
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
         let command_pool = self.command_pool.take().unwrap();
         let vertex_buffer = self.vertex_buffer.take().unwrap();
+        let index_buffer = self.index_buffer.take().unwrap();
 
         unsafe {
+            index_buffer.cleanup(&device, None);
             vertex_buffer.cleanup(&device, None);
             device.destroy_command_pool(command_pool, None);
             swapchain.cleanup(&device, None);
