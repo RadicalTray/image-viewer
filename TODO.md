@@ -21,9 +21,9 @@
     [x] createIndexBuffer()
     [x] createUniformBuffers()
     [x] createDescriptorPool()
-    [ ] createDescriptorSets()
-    [ ] createCommandBuffers()
-    [ ] createSyncObjects()
+    [x] createDescriptorSets()
+    [x] createCommandBuffers()
+    [x] createSyncObjects()
     [ ] Render something to window
     [ ] recreateSwapchain()
     [ ] createDepthResources()

@@ -49,6 +49,9 @@ pub struct App<'a> {
     descriptor_pool: Option<vk::DescriptorPool>,
     descriptor_sets: Option<Vec<vk::DescriptorSet>>,
     command_buffers: Option<Vec<vk::CommandBuffer>>,
+    image_available_sems: Option<Vec<vk::Semaphore>>,
+    render_finished_sems: Option<Vec<vk::Semaphore>>,
+    in_flight_fences: Option<Vec<vk::Fence>>,
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -97,6 +100,9 @@ impl<'a> App<'a> {
             descriptor_pool: None,
             descriptor_sets: None,
             command_buffers: None,
+            image_available_sems: None,
+            render_finished_sems: None,
+            in_flight_fences: None,
         }
     }
 
@@ -119,6 +125,7 @@ impl<'a> App<'a> {
         self.init_descriptor_pool();
         self.init_descriptor_sets();
         self.init_command_buffers();
+        self.init_sync_objects();
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
@@ -885,6 +892,29 @@ impl<'a> App<'a> {
         let command_buffers = unsafe { device.allocate_command_buffers(&alloc_info).unwrap() };
         self.command_buffers = Some(command_buffers);
     }
+
+    fn init_sync_objects(&mut self) {
+        let device = self.device.as_ref().unwrap();
+
+        let mut image_available_sems = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        let mut render_finished_sems = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        let mut in_flight_fences = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+
+        let sem_info = vk::SemaphoreCreateInfo::default();
+        let fence_info = vk::FenceCreateInfo::default();
+
+        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+            unsafe {
+                image_available_sems.push(device.create_semaphore(&sem_info, None).unwrap());
+                render_finished_sems.push(device.create_semaphore(&sem_info, None).unwrap());
+                in_flight_fences.push(device.create_fence(&fence_info, None).unwrap());
+            }
+        }
+
+        self.image_available_sems = Some(image_available_sems);
+        self.render_finished_sems = Some(render_finished_sems);
+        self.in_flight_fences = Some(in_flight_fences);
+    }
 }
 
 impl<'a> Drop for App<'a> {
@@ -904,8 +934,18 @@ impl<'a> Drop for App<'a> {
         let index_buffer = self.index_buffer.take().unwrap();
         let uniform_buffers = self.uniform_buffers.take().unwrap();
         let descriptor_pool = self.descriptor_pool.take().unwrap();
+        let image_available_sems = self.image_available_sems.take().unwrap();
+        let render_finished_sems = self.render_finished_sems.take().unwrap();
+        let in_flight_fences = self.in_flight_fences.take().unwrap();
+        let sems_chain = image_available_sems
+            .into_iter()
+            .chain(render_finished_sems.into_iter());
 
         unsafe {
+            sems_chain.for_each(|x| device.destroy_semaphore(x, None));
+            in_flight_fences
+                .into_iter()
+                .for_each(|x| device.destroy_fence(x, None));
             device.destroy_descriptor_pool(descriptor_pool, None);
             uniform_buffers
                 .into_iter()
