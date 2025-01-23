@@ -1,8 +1,8 @@
 use ash::vk;
 
 pub struct Vertex {
-    pub pos: glm::Vec2,
-    pub color: glm::Vec3,
+    pub pos: glam::Vec2,
+    pub color: glam::Vec3,
 }
 
 impl Vertex {

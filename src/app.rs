@@ -66,9 +66,9 @@ impl<'a> ApplicationHandler for App<'a> {
 
 /// clean up on Drop
 impl<'a> App<'a> {
-    pub fn new() -> Self {
+    pub fn new(vk_entry: ash::Entry) -> Self {
         App {
-            vk_entry: ash::Entry::linked(),
+            vk_entry,
             vk_instance: None,
             window: None,
             surface_instance: None,

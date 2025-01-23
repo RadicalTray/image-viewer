@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 ash = { version = "0.38.0", features = ["linked"] }
 ash-window = "0.13.0"
-glm = "0.2.3"
+glam = "0.29.2"
 winit = "0.30.8"
 
 [dev-dependencies]
