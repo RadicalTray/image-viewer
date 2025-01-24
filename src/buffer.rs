@@ -8,6 +8,7 @@ pub enum BufferCreationError {
     MemoryTypeNotFound,
 }
 
+#[derive(Debug)]
 pub struct Buffer {
     size: vk::DeviceSize,
     buffer: vk::Buffer,

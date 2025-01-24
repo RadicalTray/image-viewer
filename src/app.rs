@@ -568,7 +568,7 @@ impl<'a> App<'a> {
             .rasterizer_discard_enable(false)
             .polygon_mode(vk::PolygonMode::FILL)
             .cull_mode(vk::CullModeFlags::BACK)
-            .front_face(vk::FrontFace::COUNTER_CLOCKWISE) // winit vs glfw?
+            .front_face(vk::FrontFace::CLOCKWISE)
             .depth_bias_enable(false)
             .line_width(1.0f32);
 
@@ -1201,7 +1201,7 @@ fn populate_debug_create_info(
     debug_info
         .message_severity(
             DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                // | DebugUtilsMessageSeverityFlagsEXT::INFO
+                | DebugUtilsMessageSeverityFlagsEXT::INFO
                 | DebugUtilsMessageSeverityFlagsEXT::WARNING
                 | DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
