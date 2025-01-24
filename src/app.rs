@@ -1109,7 +1109,7 @@ impl<'a> App<'a> {
         let aspect_ratio: f32 = swapchain.extent().width as f32 / swapchain.extent().height as f32;
 
         let ubo = UniformBufferObject {
-            model: Mat4::IDENTITY * Mat4::from_rotation_z(time_elapsed * pi / 2.0),
+            model: Mat4::from_rotation_z(time_elapsed * pi / 2.0),
             view: Mat4::look_at_rh(
                 vec3(2.0, 2.0, 2.0),
                 vec3(0.0, 0.0, 0.0),
