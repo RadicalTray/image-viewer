@@ -1,6 +1,5 @@
 use ash::vk;
 
-#[repr(C)]
 pub struct Vertex {
     pub pos: [f32; 2],
     pub color: [f32; 3],
