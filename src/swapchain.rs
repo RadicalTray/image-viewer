@@ -1,87 +1,84 @@
-use std::error::Error;
-
+use crate::{device::Device, instance::Instance};
 use ash::{khr, prelude::*, vk};
+use std::{error::Error, rc::Rc};
 
-// lifetime is 100% not working properly, but everything is working because we're using no allocation_callbacks
 pub struct Swapchain<'a> {
+    ash_device: Rc<Device<'a>>,
     device: khr::swapchain::Device,
     swapchain: vk::SwapchainKHR,
     format: vk::Format,
     extent: vk::Extent2D,
     images: Vec<vk::Image>,
-    image_views: Option<Vec<vk::ImageView>>,
+    image_views: Vec<vk::ImageView>,
     framebuffers: Option<Vec<vk::Framebuffer>>,
-    allocation_callbacks: Option<&'a vk::AllocationCallbacks<'a>>,
+    allocator: Option<&'a vk::AllocationCallbacks<'a>>,
 }
 
 impl<'a> Swapchain<'a> {
-    pub fn new(
-        vk_instance: &ash::Instance,
-        vk_device: &ash::Device,
+    pub unsafe fn new(
+        ash_instance: &Instance,
+        ash_device: Rc<Device<'a>>,
         swapchain_info: &vk::SwapchainCreateInfoKHR,
-        allocation_callbacks: Option<&'a vk::AllocationCallbacks<'_>>,
+        allocator: Option<&'a vk::AllocationCallbacks<'a>>,
     ) -> VkResult<Self> {
         let format = swapchain_info.image_format;
         let extent = swapchain_info.image_extent;
-        let device = khr::swapchain::Device::new(vk_instance, vk_device);
-        let swapchain = unsafe { device.create_swapchain(swapchain_info, allocation_callbacks)? };
-        let images = unsafe { device.get_swapchain_images(swapchain)? };
-        Ok(Self {
-            device,
-            swapchain,
-            format,
-            extent,
-            images,
-            allocation_callbacks,
-            image_views: None,
-            framebuffers: None,
-        })
-    }
+        let device = khr::swapchain::Device::new(ash_instance.instance(), ash_device.device());
 
-    pub fn init_image_views(&mut self, vk_device: &ash::Device) -> VkResult<()> {
-        let images = &self.images;
-        let format = self.format;
-        let allocation_callbacks = self.allocation_callbacks;
-        let mut image_views = Vec::with_capacity(images.len());
-        for image in images {
-            let swizzle_identity = vk::ComponentSwizzle::IDENTITY;
-            let image_view_info = vk::ImageViewCreateInfo::default()
-                .image(*image)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(format)
-                .components(
-                    vk::ComponentMapping::default()
-                        .r(swizzle_identity)
-                        .g(swizzle_identity)
-                        .b(swizzle_identity)
-                        .a(swizzle_identity),
-                )
-                .subresource_range(
-                    vk::ImageSubresourceRange::default()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .base_mip_level(0)
-                        .level_count(1)
-                        .base_array_layer(0)
-                        .layer_count(1),
+        unsafe {
+            let swapchain = device.create_swapchain(swapchain_info, allocator)?;
+            let images = device.get_swapchain_images(swapchain)?;
+            let allocation_callbacks = allocator;
+            let mut image_views = Vec::with_capacity(images.len());
+            for image in &images {
+                let swizzle_identity = vk::ComponentSwizzle::IDENTITY;
+                let image_view_info = vk::ImageViewCreateInfo::default()
+                    .image(*image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(format)
+                    .components(
+                        vk::ComponentMapping::default()
+                            .r(swizzle_identity)
+                            .g(swizzle_identity)
+                            .b(swizzle_identity)
+                            .a(swizzle_identity),
+                    )
+                    .subresource_range(
+                        vk::ImageSubresourceRange::default()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .base_mip_level(0)
+                            .level_count(1)
+                            .base_array_layer(0)
+                            .layer_count(1),
+                    );
+                image_views.push(
+                    ash_device
+                        .device()
+                        .create_image_view(&image_view_info, allocation_callbacks)?,
                 );
-            image_views.push(unsafe {
-                vk_device.create_image_view(&image_view_info, allocation_callbacks)?
-            });
+            }
+            Ok(Self {
+                ash_device,
+                device,
+                swapchain,
+                format,
+                extent,
+                images,
+                allocator,
+                image_views,
+                framebuffers: None,
+            })
         }
-
-        self.image_views = Some(image_views);
-        Ok(())
     }
 
-    pub fn init_framebuffers(
+    pub unsafe fn init_framebuffers(
         &mut self,
-        device: &ash::Device,
         render_pass: vk::RenderPass,
     ) -> Result<(), Box<dyn Error>> {
-        let swapchain_image_views = self.image_views.as_ref().unwrap();
+        let image_views = &self.image_views;
 
-        let mut framebuffers = Vec::with_capacity(swapchain_image_views.len());
-        for image_view in swapchain_image_views {
+        let mut framebuffers = Vec::with_capacity(image_views.len());
+        for image_view in image_views {
             let attachments = [*image_view];
             let framebuffer_info = vk::FramebufferCreateInfo::default()
                 .render_pass(render_pass)
@@ -90,33 +87,18 @@ impl<'a> Swapchain<'a> {
                 .height(self.extent().height)
                 .layers(1);
 
-            let framebuffer =
-                unsafe { device.create_framebuffer(&framebuffer_info, None).unwrap() };
+            let framebuffer = unsafe {
+                self.ash_device
+                    .device()
+                    .create_framebuffer(&framebuffer_info, None)
+                    .unwrap()
+            };
 
             framebuffers.push(framebuffer);
         }
 
         self.framebuffers = Some(framebuffers);
         Ok(())
-    }
-
-    pub fn cleanup(
-        mut self,
-        device: &ash::Device,
-        allocation_callbacks: Option<&'a vk::AllocationCallbacks<'_>>,
-    ) {
-        unsafe {
-            self.framebuffers
-                .take()
-                .unwrap()
-                .into_iter()
-                .for_each(|x| device.destroy_framebuffer(x, allocation_callbacks));
-            self.image_views
-                .take()
-                .unwrap()
-                .into_iter()
-                .for_each(|x| device.destroy_image_view(x, allocation_callbacks));
-        }
     }
 
     pub fn choose_format(
@@ -205,9 +187,18 @@ impl<'a> Swapchain<'a> {
 
 impl<'a> Drop for Swapchain<'a> {
     fn drop(&mut self) {
+        let device = self.ash_device.device();
+        let allocator = self.allocator;
         unsafe {
+            self.image_views
+                .iter()
+                .for_each(|x| device.destroy_image_view(*x, allocator));
+            if let Some(f) = self.framebuffers.take() {
+                f.into_iter()
+                    .for_each(|x| device.destroy_framebuffer(x, allocator));
+            }
             self.device
-                .destroy_swapchain(self.swapchain, self.allocation_callbacks);
+                .destroy_swapchain(self.swapchain, self.allocator);
         }
     }
 }

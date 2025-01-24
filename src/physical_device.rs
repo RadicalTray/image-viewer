@@ -1,31 +1,34 @@
+use crate::{device::Device, instance::Instance};
+use ash::{khr, prelude::*, vk};
 use std::{
     error::Error,
     ffi::{CStr, c_char},
+    rc::Rc,
 };
 
-use ash::{khr, prelude::*, vk};
-
-// idk if instance is really associated with this
 pub struct PhysicalDevice {
+    ash_instance: Rc<Instance>,
     device: vk::PhysicalDevice,
 }
 
 impl PhysicalDevice {
-    pub fn new(physical_device: vk::PhysicalDevice) -> Self {
+    pub fn new(ash_instance: Rc<Instance>, physical_device: vk::PhysicalDevice) -> Self {
         let device = physical_device;
-        Self { device }
+        Self {
+            ash_instance,
+            device,
+        }
     }
 
     pub fn device(&self) -> vk::PhysicalDevice {
         self.device
     }
 
-    pub fn support_extensions(
+    pub unsafe fn support_extensions(
         &self,
-        vk_instance: &ash::Instance,
         required_extension_names: &[*const c_char],
     ) -> Result<bool, Box<dyn Error>> {
-        let supported_extensions = self.query_extension_properties(vk_instance)?;
+        let supported_extensions = unsafe { self.query_extension_properties()? };
         let mut supported_extension_names = Vec::with_capacity(supported_extensions.len());
         for ext in &supported_extensions {
             supported_extension_names.push(ext.extension_name_as_c_str()?);
@@ -41,18 +44,20 @@ impl PhysicalDevice {
         Ok(required_extension_names.len() == 0)
     }
 
-    pub fn query_extension_properties(
-        &self,
-        vk_instance: &ash::Instance,
-    ) -> VkResult<Vec<vk::ExtensionProperties>> {
-        unsafe { vk_instance.enumerate_device_extension_properties(self.device()) }
+    pub unsafe fn query_extension_properties(&self) -> VkResult<Vec<vk::ExtensionProperties>> {
+        unsafe {
+            self.ash_instance
+                .instance()
+                .enumerate_device_extension_properties(self.device())
+        }
     }
 
-    pub fn query_queue_family_properties(
-        &self,
-        vk_instance: &ash::Instance,
-    ) -> Vec<vk::QueueFamilyProperties> {
-        unsafe { vk_instance.get_physical_device_queue_family_properties(self.device()) }
+    pub fn query_queue_family_properties(&self) -> Vec<vk::QueueFamilyProperties> {
+        unsafe {
+            self.ash_instance
+                .instance()
+                .get_physical_device_queue_family_properties(self.device())
+        }
     }
 
     pub fn query_support_surface(
@@ -70,22 +75,33 @@ impl PhysicalDevice {
         }
     }
 
-    pub fn create_logical_device(
+    pub unsafe fn create_logical_device<'a>(
         &self,
-        vk_instance: &ash::Instance,
-        device_create_info: &vk::DeviceCreateInfo,
-        allocation_callbacks: Option<&vk::AllocationCallbacks<'_>>,
-    ) -> VkResult<ash::Device> {
+        create_info: &vk::DeviceCreateInfo,
+        allocator: Option<&'a vk::AllocationCallbacks<'a>>,
+    ) -> VkResult<Device<'a>> {
+        let device = unsafe {
+            self.ash_instance
+                .instance()
+                .create_device(self.device(), create_info, allocator)?
+        };
+
+        Ok(Device::new(
+            Rc::clone(&self.ash_instance),
+            device,
+            allocator,
+        ))
+    }
+
+    pub unsafe fn query_features(&self) -> vk::PhysicalDeviceFeatures {
         unsafe {
-            vk_instance.create_device(self.device(), device_create_info, allocation_callbacks)
+            self.ash_instance
+                .instance()
+                .get_physical_device_features(self.device())
         }
     }
 
-    pub fn query_features(&self, vk_instance: &ash::Instance) -> vk::PhysicalDeviceFeatures {
-        unsafe { vk_instance.get_physical_device_features(self.device()) }
-    }
-
-    pub fn query_surface_capabilities(
+    pub unsafe fn query_surface_capabilities(
         &self,
         surface_instance: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
@@ -93,7 +109,7 @@ impl PhysicalDevice {
         unsafe { surface_instance.get_physical_device_surface_capabilities(self.device(), surface) }
     }
 
-    pub fn query_supported_surface_formats(
+    pub unsafe fn query_supported_surface_formats(
         &self,
         surface_instance: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
@@ -101,7 +117,7 @@ impl PhysicalDevice {
         unsafe { surface_instance.get_physical_device_surface_formats(self.device(), surface) }
     }
 
-    pub fn query_supported_present_modes(
+    pub unsafe fn query_supported_present_modes(
         &self,
         surface_instance: &khr::surface::Instance,
         surface: vk::SurfaceKHR,
@@ -111,10 +127,11 @@ impl PhysicalDevice {
         }
     }
 
-    pub fn query_memory_properties(
-        &self,
-        vk_instance: &ash::Instance,
-    ) -> vk::PhysicalDeviceMemoryProperties {
-        unsafe { vk_instance.get_physical_device_memory_properties(self.device()) }
+    pub unsafe fn query_memory_properties(&self) -> vk::PhysicalDeviceMemoryProperties {
+        unsafe {
+            self.ash_instance
+                .instance()
+                .get_physical_device_memory_properties(self.device())
+        }
     }
 }
