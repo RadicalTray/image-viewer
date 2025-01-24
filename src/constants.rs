@@ -1,5 +1,6 @@
 use crate::vertex::Vertex;
 use ash::vk;
+use glam::{vec2, vec3};
 use std::ffi::c_char;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -8,20 +9,20 @@ pub const DEBUG_ENABLED_LAYER_NAMES: [*const c_char; 1] = [c"VK_LAYER_KHRONOS_va
 pub const ENABLED_DEVICE_EXTENSION_NAMES: [*const c_char; 1] = [vk::KHR_SWAPCHAIN_NAME.as_ptr()];
 pub const VERTICES: [Vertex; 4] = [
     Vertex {
-        pos: [-0.5, -0.5],
-        color: [1.0, 0.0, 0.0],
+        pos: vec2(-0.5, -0.5),
+        color: vec3(1.0, 0.0, 0.0),
     },
     Vertex {
-        pos: [0.5, -0.5],
-        color: [0.0, 1.0, 0.0],
+        pos: vec2(0.5, -0.5),
+        color: vec3(0.0, 1.0, 0.0),
     },
     Vertex {
-        pos: [0.5, 0.5],
-        color: [0.0, 0.0, 1.0],
+        pos: vec2(0.5, 0.5),
+        color: vec3(0.0, 0.0, 1.0),
     },
     Vertex {
-        pos: [-0.5, 0.5],
-        color: [1.0, 1.0, 1.0],
+        pos: vec2(-0.5, 0.5),
+        color: vec3(1.0, 1.0, 1.0),
     },
 ];
 pub const INDICES: [u32; 6] = [0, 1, 2, 2, 3, 0];

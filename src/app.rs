@@ -11,7 +11,7 @@ use ash::{
     },
 };
 use core::f32;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, vec3};
 use std::{
     collections::HashSet,
     ffi::{CStr, c_char, c_void},
@@ -70,6 +70,10 @@ impl<'a> ApplicationHandler for App<'a> {
             }
             WindowEvent::RedrawRequested => {
                 self.draw();
+                self.window.as_ref().unwrap().request_redraw();
+            }
+            WindowEvent::Resized(_) => {
+                self.recreate_swapchain();
             }
             _ => (),
         }
@@ -1100,27 +1104,18 @@ impl<'a> App<'a> {
         let start_time = self.start_time;
         let uniform_buffers = self.uniform_buffers.as_ref().unwrap();
 
-        let dt = start_time.elapsed().unwrap().as_secs_f32();
+        let time_elapsed = start_time.elapsed().unwrap().as_secs_f32();
         let pi = f32::consts::PI;
+        let aspect_ratio: f32 = swapchain.extent().width as f32 / swapchain.extent().height as f32;
 
         let ubo = UniformBufferObject {
-            model: Mat4::from_cols_array_2d(&[
-                [1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
-            ]) * Mat4::from_rotation_y(dt * pi / 2.0),
+            model: Mat4::IDENTITY * Mat4::from_rotation_z(time_elapsed * pi / 2.0),
             view: Mat4::look_at_rh(
-                Vec3::from_array([2.0, 2.0, 2.0]),
-                Vec3::from_array([0.0, 0.0, 0.0]),
-                Vec3::from_array([0.0, 0.0, 1.0]),
+                vec3(2.0, 2.0, 2.0),
+                vec3(0.0, 0.0, 0.0),
+                vec3(0.0, 0.0, 1.0),
             ),
-            proj: Mat4::perspective_lh(
-                pi / 4.0,
-                swapchain.extent().width as f32 / swapchain.extent().height as f32,
-                0.1,
-                10.0,
-            ),
+            proj: Mat4::perspective_rh(-pi / 4.0, aspect_ratio, 0.1, 10.0),
         };
 
         unsafe {
