@@ -6,7 +6,6 @@ pub struct Swapchain {
     swapchain: vk::SwapchainKHR,
     format: vk::Format,
     extent: vk::Extent2D,
-    images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
     framebuffers: Option<Vec<vk::Framebuffer>>,
 }
@@ -54,7 +53,6 @@ impl Swapchain {
             swapchain,
             format,
             extent,
-            images,
             image_views,
             framebuffers: None,
         })

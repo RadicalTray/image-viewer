@@ -105,10 +105,6 @@ impl Buffer {
     pub fn ptr(&self) -> Option<*mut c_void> {
         self.ptr
     }
-
-    pub fn size(&self) -> vk::DeviceSize {
-        self.size
-    }
 }
 
 impl std::fmt::Display for BufferCreationError {
