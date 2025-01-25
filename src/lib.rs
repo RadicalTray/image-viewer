@@ -6,6 +6,7 @@ mod physical_device;
 mod pipeline;
 mod queue;
 mod shader_module;
+mod surface;
 mod swapchain;
 mod uniform_buffer_object;
 mod vertex;

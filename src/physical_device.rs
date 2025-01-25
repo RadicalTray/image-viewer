@@ -11,7 +11,7 @@ pub struct PhysicalDevice {
 }
 
 impl PhysicalDevice {
-    pub fn new(physical_device: vk::PhysicalDevice) -> Self {
+    pub fn from(physical_device: vk::PhysicalDevice) -> Self {
         let device = physical_device;
         Self { device }
     }

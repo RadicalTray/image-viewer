@@ -6,11 +6,12 @@ use crate::{
     pipeline::Pipeline,
     queue::{QueueFamilyIndices, Queues},
     shader_module::ShaderModule,
+    surface::Surface,
     swapchain::Swapchain,
     uniform_buffer_object::UniformBufferObject,
     vertex::Vertex,
 };
-use ash::{khr, vk};
+use ash::vk;
 use core::f32;
 use glam::{Mat4, vec3};
 use std::{
@@ -23,7 +24,6 @@ use winit::{
     event::WindowEvent,
     event_loop::ActiveEventLoop,
     raw_window_handle::HasDisplayHandle,
-    raw_window_handle::HasWindowHandle,
     window::{Window, WindowId},
 };
 
@@ -31,8 +31,7 @@ pub struct App {
     ash_entry: ash::Entry,
     ash_instance: Option<ash::Instance>,
     window: Option<Window>,
-    surface_instance: Option<khr::surface::Instance>,
-    surface: Option<vk::SurfaceKHR>,
+    surface: Option<Surface>,
     debug_messenger: Option<DebugMessenger>,
     queue_family_indices: Option<QueueFamilyIndices>,
     physical_device: Option<PhysicalDevice>,
@@ -85,7 +84,6 @@ impl App {
             ash_entry,
             ash_instance: None,
             window: None,
-            surface_instance: None,
             surface: None,
             debug_messenger: None,
             queue_family_indices: None,
@@ -270,19 +268,8 @@ impl App {
         let ash_instance = self.ash_instance.as_ref().unwrap();
         let window = self.window.as_ref().unwrap();
 
-        self.surface_instance = Some(khr::surface::Instance::new(ash_entry, &ash_instance));
-
         self.surface = unsafe {
-            Some(
-                ash_window::create_surface(
-                    ash_entry,
-                    &ash_instance,
-                    window.display_handle().unwrap().as_raw(),
-                    window.window_handle().unwrap().as_raw(),
-                    None,
-                )
-                .expect("Failed to create surface."),
-            )
+            Some(Surface::new(ash_entry, ash_instance, window).expect("Failed to create surface."))
         };
     }
 
@@ -297,16 +284,17 @@ impl App {
         let mut chosen_device = None;
         let mut chosen_queue_family_indices = None;
         for device in physical_devices {
-            let device = PhysicalDevice::new(device);
+            let device = PhysicalDevice::from(device);
             let queue_family_properties = device.query_queue_family_properties(&ash_instance);
 
-            let surface_instance = self.surface_instance.as_ref().unwrap();
             let surface = self.surface.as_ref().unwrap();
+            let surface_instance = surface.instance();
+            let surface = surface.surface();
 
             let mut queue_family_indices = QueueFamilyIndices::default();
             for (i, property) in queue_family_properties.iter().enumerate() {
                 let support_surface = device
-                    .query_support_surface(surface_instance, i.try_into().unwrap(), *surface)
+                    .query_support_surface(surface_instance, i.try_into().unwrap(), surface)
                     .unwrap();
 
                 if support_surface {
@@ -334,10 +322,10 @@ impl App {
             }
 
             let supported_surface_format = device
-                .query_supported_surface_formats(surface_instance, *surface)
+                .query_supported_surface_formats(surface_instance, surface)
                 .unwrap();
             let supported_present_modes = device
-                .query_supported_present_modes(surface_instance, *surface)
+                .query_supported_present_modes(surface_instance, surface)
                 .unwrap();
 
             if supported_surface_format.is_empty() || supported_present_modes.is_empty() {
@@ -395,26 +383,27 @@ impl App {
 
     fn init_swapchain(&mut self) {
         let physical_device = self.physical_device.as_ref().unwrap();
-        let surface_instance = self.surface_instance.as_ref().unwrap();
         let surface = self.surface.as_ref().unwrap();
+        let surface_instance = surface.instance();
+        let surface = surface.surface();
 
         let format = Swapchain::choose_format(
             physical_device
-                .query_supported_surface_formats(surface_instance, *surface)
+                .query_supported_surface_formats(surface_instance, surface)
                 .unwrap(),
             vk::Format::B8G8R8A8_SRGB,
             vk::ColorSpaceKHR::SRGB_NONLINEAR,
         );
 
         let capabilities = physical_device
-            .query_surface_capabilities(surface_instance, *surface)
+            .query_surface_capabilities(surface_instance, surface)
             .unwrap();
         let swapchain_extent =
             Swapchain::choose_extent(self.window.as_ref().unwrap(), capabilities);
 
         let present_mode = Swapchain::choose_present_mode(
             physical_device
-                .query_supported_present_modes(surface_instance, *surface)
+                .query_supported_present_modes(surface_instance, surface)
                 .unwrap(),
             vk::PresentModeKHR::FIFO, // prefer this for power saving
         );
@@ -428,7 +417,7 @@ impl App {
         }
 
         let mut swapchain_info = vk::SwapchainCreateInfoKHR::default()
-            .surface(*surface)
+            .surface(surface)
             .min_image_count(image_count)
             .image_format(format.format)
             .image_color_space(format.color_space)
@@ -1145,7 +1134,6 @@ impl Drop for App {
     // i should probably use macro lol
     fn drop(&mut self) {
         let device = self.device.take().unwrap();
-        let surface_instance = self.surface_instance.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
@@ -1175,11 +1163,11 @@ impl Drop for App {
             index_buffer.cleanup(&device, None);
             vertex_buffer.cleanup(&device, None);
             device.destroy_command_pool(command_pool, None);
-            graphics_pipeline.cleanup(&device, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
+            graphics_pipeline.cleanup(&device, None);
             self.swapchain.take().unwrap().cleanup(&device, None);
-            surface_instance.destroy_surface(self.surface.take().unwrap(), None);
+            self.surface.take().unwrap().cleanup(None);
             self.debug_messenger.take().unwrap().cleanup(None);
             device.destroy_device(None);
             self.ash_instance.take().unwrap().destroy_instance(None);
