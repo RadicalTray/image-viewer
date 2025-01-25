@@ -3,6 +3,7 @@ use crate::{
     command_pool::CommandPool,
     constants::*,
     debug_messenger::{self, DebugMessenger},
+    descriptor_set_layout::DescriptorSetLayout,
     fence::Fence,
     physical_device::PhysicalDevice,
     pipeline::Pipeline,
@@ -43,7 +44,7 @@ pub struct App {
     queues: Option<Queues>,
     swapchain: Option<Swapchain>,
     render_pass: Option<RenderPass>,
-    descriptor_set_layout: Option<vk::DescriptorSetLayout>,
+    descriptor_set_layout: Option<DescriptorSetLayout>,
     graphics_pipeline: Option<Pipeline>,
     command_pool: Option<CommandPool>,
     vertex_buffer: Option<Buffer>,
@@ -513,11 +514,8 @@ impl App {
 
         let bindings = [ubo_layout_binding];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-        let descriptor_set_layout = unsafe {
-            device
-                .create_descriptor_set_layout(&layout_info, None)
-                .unwrap()
-        };
+        let descriptor_set_layout =
+            unsafe { DescriptorSetLayout::new(device, &layout_info, None).unwrap() };
 
         self.descriptor_set_layout = Some(descriptor_set_layout);
     }
@@ -594,7 +592,7 @@ impl App {
             .logic_op_enable(false)
             .attachments(&color_blend_attachments);
 
-        let descriptor_set_layouts = [*self.descriptor_set_layout.as_ref().unwrap()];
+        let descriptor_set_layouts = [self.descriptor_set_layout.as_ref().unwrap().layout()];
         let pipeline_layout_info =
             vk::PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
 
@@ -855,7 +853,7 @@ impl App {
     }
 
     fn init_descriptor_sets(&mut self) {
-        let layout = *self.descriptor_set_layout.as_ref().unwrap();
+        let layout = self.descriptor_set_layout.as_ref().unwrap().layout();
         let descriptor_pool = *self.descriptor_pool.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let uniform_buffers = self.uniform_buffers.as_ref().unwrap();
@@ -1135,7 +1133,6 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         let device = self.device.take().unwrap();
-        let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
         let descriptor_pool = self.descriptor_pool.take().unwrap();
 
         let image_available_sems = self.image_available_sems.take().unwrap();
@@ -1162,7 +1159,10 @@ impl Drop for App {
             self.index_buffer.take().unwrap().cleanup(&device, None);
             self.vertex_buffer.take().unwrap().cleanup(&device, None);
             self.command_pool.take().unwrap().cleanup(&device, None);
-            device.destroy_descriptor_set_layout(descriptor_set_layout, None);
+            self.descriptor_set_layout
+                .take()
+                .unwrap()
+                .cleanup(&device, None);
             self.render_pass.take().unwrap().cleanup(&device, None);
             self.graphics_pipeline
                 .take()
