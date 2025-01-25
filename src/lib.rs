@@ -6,6 +6,7 @@ mod debug_messenger;
 mod physical_device;
 mod pipeline;
 mod queue;
+mod semaphore;
 mod shader_module;
 mod surface;
 mod swapchain;

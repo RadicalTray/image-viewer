@@ -6,6 +6,7 @@ use crate::{
     physical_device::PhysicalDevice,
     pipeline::Pipeline,
     queue::{QueueFamilyIndices, Queues},
+    semaphore::Semaphore,
     shader_module::ShaderModule,
     surface::Surface,
     swapchain::Swapchain,
@@ -49,8 +50,8 @@ pub struct App {
     descriptor_pool: Option<vk::DescriptorPool>,
     descriptor_sets: Option<Vec<vk::DescriptorSet>>,
     command_buffers: Option<Vec<vk::CommandBuffer>>,
-    image_available_sems: Option<Vec<vk::Semaphore>>,
-    render_finished_sems: Option<Vec<vk::Semaphore>>,
+    image_available_sems: Option<Vec<Semaphore>>,
+    render_finished_sems: Option<Vec<Semaphore>>,
     in_flight_fences: Option<Vec<vk::Fence>>,
     current_frame: usize,
     start_time: std::time::SystemTime,
@@ -906,8 +907,8 @@ impl App {
 
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             unsafe {
-                image_available_sems.push(device.create_semaphore(&sem_info, None).unwrap());
-                render_finished_sems.push(device.create_semaphore(&sem_info, None).unwrap());
+                image_available_sems.push(Semaphore::new(device, &sem_info, None).unwrap());
+                render_finished_sems.push(Semaphore::new(device, &sem_info, None).unwrap());
                 in_flight_fences.push(device.create_fence(&fence_info, None).unwrap());
             }
         }
@@ -934,7 +935,7 @@ impl App {
             let image_available_sems = self.image_available_sems.as_ref().unwrap();
             let (image_index, _is_suboptimal) = match swapchain.acquire_next_image(
                 u64::MAX,
-                image_available_sems[current_frame],
+                image_available_sems[current_frame].sem(),
                 vk::Fence::null(),
             ) {
                 Ok(t) => t,
@@ -959,10 +960,10 @@ impl App {
             let command_buffers = self.command_buffers.as_ref().unwrap();
             let in_flight_fences = self.in_flight_fences.as_ref().unwrap();
 
-            let wait_sems = [image_available_sems[current_frame]];
+            let wait_sems = [image_available_sems[current_frame].sem()];
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             let command_buffers = [command_buffers[current_frame]];
-            let signal_sems = [render_finished_sems[current_frame]];
+            let signal_sems = [render_finished_sems[current_frame].sem()];
             let submit_info = vk::SubmitInfo::default()
                 .wait_semaphores(&wait_sems)
                 .wait_dst_stage_mask(&wait_stages)
@@ -1139,14 +1140,14 @@ impl Drop for App {
 
         let image_available_sems = self.image_available_sems.take().unwrap();
         let render_finished_sems = self.render_finished_sems.take().unwrap();
-        let sems_chain = image_available_sems
+        let sems = image_available_sems
             .into_iter()
             .chain(render_finished_sems.into_iter());
 
         unsafe {
             device.device_wait_idle().unwrap();
 
-            sems_chain.for_each(|x| device.destroy_semaphore(x, None));
+            sems.for_each(|x| x.cleanup(&device, None));
             self.in_flight_fences
                 .take()
                 .unwrap()
