@@ -111,7 +111,6 @@ impl App {
 
     fn init(&mut self, event_loop: &ActiveEventLoop) {
         self.init_ash_instance(event_loop);
-        self.init_debug_messenger();
         self.init_window(event_loop);
         self.init_surface();
         self.init_physical_device();
@@ -179,6 +178,9 @@ impl App {
                     .expect("Failed to create vulkan instance."),
             )
         };
+
+        // TODO: disable this on release build
+        self.init_debug_messenger();
     }
 
     fn check_extensions_support(
