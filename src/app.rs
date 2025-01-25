@@ -34,7 +34,6 @@ impl ApplicationHandler for App {
     }
 }
 
-/// clean up on Drop
 impl App {
     pub fn new(ash_entry: ash::Entry) -> Self {
         Self {
