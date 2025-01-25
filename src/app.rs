@@ -81,9 +81,9 @@ impl ApplicationHandler for App {
 
 /// clean up on Drop
 impl App {
-    pub fn new(vk_entry: ash::Entry) -> Self {
+    pub fn new(ash_entry: ash::Entry) -> Self {
         App {
-            ash_entry: vk_entry,
+            ash_entry,
             ash_instance: None,
             window: None,
             surface_instance: None,
@@ -115,7 +115,7 @@ impl App {
     }
 
     fn init(&mut self, event_loop: &ActiveEventLoop) {
-        self.init_vk_instance(event_loop);
+        self.init_ash_instance(event_loop);
         self.init_debug_messenger();
         self.init_window(event_loop);
         self.init_surface();
@@ -136,8 +136,8 @@ impl App {
         self.init_sync_objects();
     }
 
-    fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
-        let vk_entry = &self.ash_entry;
+    fn init_ash_instance(&mut self, event_loop: &ActiveEventLoop) {
+        let ash_entry = &self.ash_entry;
 
         let mut enabled_extension_names = Vec::from(
             ash_window::enumerate_required_extensions(
@@ -179,7 +179,7 @@ impl App {
 
         self.ash_instance = unsafe {
             Some(
-                vk_entry
+                ash_entry
                     .create_instance(&create_info, None)
                     .expect("Failed to create vulkan instance."),
             )
@@ -269,17 +269,17 @@ impl App {
     }
 
     fn init_surface(&mut self) {
-        let vk_entry = &self.ash_entry;
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_entry = &self.ash_entry;
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let window = self.window.as_ref().unwrap();
 
-        self.surface_instance = Some(khr::surface::Instance::new(vk_entry, &vk_instance));
+        self.surface_instance = Some(khr::surface::Instance::new(ash_entry, &ash_instance));
 
         self.surface = unsafe {
             Some(
                 ash_window::create_surface(
-                    vk_entry,
-                    &vk_instance,
+                    ash_entry,
+                    &ash_instance,
                     window.display_handle().unwrap().as_raw(),
                     window.window_handle().unwrap().as_raw(),
                     None,
@@ -290,9 +290,9 @@ impl App {
     }
 
     fn init_physical_device(&mut self) {
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let physical_devices = unsafe {
-            vk_instance
+            ash_instance
                 .enumerate_physical_devices()
                 .expect("Unable to enumerate physical devices.")
         };
@@ -301,7 +301,7 @@ impl App {
         let mut chosen_queue_family_indices = None;
         for device in physical_devices {
             let device = PhysicalDevice::new(device);
-            let queue_family_properties = device.query_queue_family_properties(&vk_instance);
+            let queue_family_properties = device.query_queue_family_properties(&ash_instance);
 
             let surface_instance = self.surface_instance.as_ref().unwrap();
             let surface = self.surface.as_ref().unwrap();
@@ -325,10 +325,10 @@ impl App {
                 }
             }
 
-            let supported_features = device.query_features(vk_instance);
+            let supported_features = device.query_features(ash_instance);
 
             if !(device
-                .support_extensions(vk_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
+                .support_extensions(ash_instance, &ENABLED_DEVICE_EXTENSION_NAMES)
                 .unwrap()
                 && queue_family_indices.is_complete()
                 && check_physical_device_features(supported_features))
@@ -360,7 +360,7 @@ impl App {
     }
 
     fn init_logical_device(&mut self) {
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
         let queue_family_indices = self.queue_family_indices.as_ref().unwrap();
         let present_family = queue_family_indices.present_family.unwrap();
@@ -384,7 +384,7 @@ impl App {
             .enabled_extension_names(&ENABLED_DEVICE_EXTENSION_NAMES);
 
         let device = physical_device
-            .create_logical_device(vk_instance, &device_info, None)
+            .create_logical_device(ash_instance, &device_info, None)
             .unwrap();
 
         self.graphics_queue = unsafe { Some(device.get_device_queue(graphics_family, 0)) };
@@ -455,10 +455,10 @@ impl App {
             .clipped(true)
             .old_swapchain(vk::SwapchainKHR::null());
 
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let swapchain =
-            unsafe { Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap() };
+            unsafe { Swapchain::new(ash_instance, device, &swapchain_info, None).unwrap() };
         self.swapchain = Some(swapchain);
     }
 
@@ -664,10 +664,10 @@ impl App {
     }
 
     fn init_vertex_buffer(&mut self) {
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
-        let device_mem_props = physical_device.query_memory_properties(vk_instance);
+        let device_mem_props = physical_device.query_memory_properties(ash_instance);
 
         let buffer_size: vk::DeviceSize = size_of_val(&VERTICES).try_into().unwrap();
         let buffer_info = vk::BufferCreateInfo::default()
@@ -762,10 +762,10 @@ impl App {
     }
 
     fn init_index_buffer(&mut self) {
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
-        let device_mem_props = physical_device.query_memory_properties(vk_instance);
+        let device_mem_props = physical_device.query_memory_properties(ash_instance);
 
         let buffer_size: vk::DeviceSize = size_of_val(&INDICES).try_into().unwrap();
         let buffer_info = vk::BufferCreateInfo::default()
@@ -813,10 +813,10 @@ impl App {
     }
 
     fn init_uniform_buffers(&mut self) {
-        let vk_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
-        let device_mem_props = physical_device.query_memory_properties(vk_instance);
+        let device_mem_props = physical_device.query_memory_properties(ash_instance);
 
         let buffer_size: vk::DeviceSize = size_of::<UniformBufferObject>().try_into().unwrap();
         let mut uniform_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
