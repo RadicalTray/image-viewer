@@ -1,49 +1,36 @@
-use crate::instance::Instance;
+use std::ffi::{CStr, c_void};
+
 use ash::{
     ext,
-    prelude::*,
     vk::{
         self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT,
     },
 };
-use std::{
-    ffi::{CStr, c_void},
-    rc::Rc,
-};
 
 pub struct DebugMessenger<'a> {
-    _ash_instance: Rc<Instance>,
+    vk_instance: &'a ash::Instance,
     instance: ext::debug_utils::Instance,
     messenger: vk::DebugUtilsMessengerEXT,
-    allocator: Option<&'a vk::AllocationCallbacks<'a>>,
 }
 
 impl<'a> DebugMessenger<'a> {
-    pub unsafe fn new(
-        vk_entry: &ash::Entry,
-        ash_instance: Rc<Instance>,
-        create_info: &vk::DebugUtilsMessengerCreateInfoEXT,
-        allocator: Option<&'a vk::AllocationCallbacks<'a>>,
-    ) -> VkResult<Self> {
-        let instance = ext::debug_utils::Instance::new(vk_entry, ash_instance.instance());
+    pub fn new(vk_entry: &ash::Entry, vk_instance: &'a ash::Instance) -> Self {
+        let debug_info =
+            populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
 
-        let messenger = unsafe { instance.create_debug_utils_messenger(create_info, allocator)? };
+        let instance = ext::debug_utils::Instance::new(vk_entry, &vk_instance);
 
-        Ok(Self {
-            _ash_instance: ash_instance,
+        let messenger = unsafe {
+            instance
+                .create_debug_utils_messenger(&debug_info, None)
+                .expect("Failed to create debug messenger.")
+        };
+
+        Self {
+            vk_instance,
             instance,
             messenger,
-            allocator,
-        })
-    }
-}
-
-impl<'a> Drop for DebugMessenger<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            self.instance
-                .destroy_debug_utils_messenger(self.messenger, self.allocator);
         }
     }
 }
@@ -54,7 +41,7 @@ pub fn populate_debug_create_info(
     debug_info
         .message_severity(
             DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                | DebugUtilsMessageSeverityFlagsEXT::INFO
+                // | DebugUtilsMessageSeverityFlagsEXT::INFO
                 | DebugUtilsMessageSeverityFlagsEXT::WARNING
                 | DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )

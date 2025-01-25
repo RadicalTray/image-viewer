@@ -1,36 +1,32 @@
-use crate::device::Device;
 use ash::prelude::VkResult;
 use ash::vk;
 use std::error::Error;
 use std::ffi::c_void;
-use std::rc::Rc;
 
 #[derive(Debug)]
 pub enum BufferCreationError {
     MemoryTypeNotFound,
 }
 
-pub struct Buffer<'a> {
-    ash_device: Rc<Device<'a>>,
+#[derive(Debug)]
+pub struct Buffer {
     size: vk::DeviceSize,
     buffer: vk::Buffer,
     memory: vk::DeviceMemory,
     ptr: Option<*mut c_void>,
-    allocator: Option<&'a vk::AllocationCallbacks<'a>>,
 }
 
-impl<'a> Buffer<'a> {
+impl Buffer {
     pub fn new(
-        ash_device: Rc<Device<'a>>,
+        device: &ash::Device,
         buffer_info: &vk::BufferCreateInfo,
-        allocator: Option<&'a vk::AllocationCallbacks<'a>>,
+        allocation_callbacks: Option<&vk::AllocationCallbacks>,
         mem_props: vk::MemoryPropertyFlags,
         device_mem_props: vk::PhysicalDeviceMemoryProperties,
     ) -> Result<Self, Box<dyn Error>> {
         let size = buffer_info.size;
-        let buffer = unsafe { ash_device.device().create_buffer(buffer_info, allocator)? };
-        let mem_requirements =
-            unsafe { ash_device.device().get_buffer_memory_requirements(buffer) };
+        let buffer = unsafe { device.create_buffer(buffer_info, allocation_callbacks)? };
+        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
 
         let alloc_info = vk::MemoryAllocateInfo::default()
             .allocation_size(mem_requirements.size)
@@ -43,20 +39,14 @@ impl<'a> Buffer<'a> {
                 .try_into()?,
             );
 
-        let memory = unsafe {
-            ash_device
-                .device()
-                .allocate_memory(&alloc_info, allocator)?
-        };
-        unsafe { ash_device.device().bind_buffer_memory(buffer, memory, 0)? };
+        let memory = unsafe { device.allocate_memory(&alloc_info, allocation_callbacks)? };
+        unsafe { device.bind_buffer_memory(buffer, memory, 0)? };
 
         Ok(Self {
-            ash_device,
             size,
             buffer,
             memory,
             ptr: None,
-            allocator,
         })
     }
 
@@ -78,23 +68,29 @@ impl<'a> Buffer<'a> {
 
     pub fn map_memory(
         &mut self,
+        device: &ash::Device,
         offset: vk::DeviceSize,
         flags: vk::MemoryMapFlags,
     ) -> VkResult<()> {
-        self.ptr = unsafe {
-            Some(
-                self.ash_device
-                    .device()
-                    .map_memory(self.memory(), offset, self.size, flags)?,
-            )
-        };
+        self.ptr = unsafe { Some(device.map_memory(self.memory(), offset, self.size, flags)?) };
         Ok(())
     }
 
-    pub fn unmap_memory(&mut self) {
+    pub fn unmap_memory(&mut self, device: &ash::Device) {
         self.ptr = None;
         unsafe {
-            self.ash_device.device().unmap_memory(self.memory());
+            device.unmap_memory(self.memory());
+        }
+    }
+
+    pub fn cleanup(
+        self,
+        device: &ash::Device,
+        allocation_callbacks: Option<&vk::AllocationCallbacks>,
+    ) {
+        unsafe {
+            device.destroy_buffer(self.buffer(), allocation_callbacks);
+            device.free_memory(self.memory(), allocation_callbacks);
         }
     }
 
@@ -112,19 +108,6 @@ impl<'a> Buffer<'a> {
 
     pub fn size(&self) -> vk::DeviceSize {
         self.size
-    }
-}
-
-impl<'a> Drop for Buffer<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            self.ash_device
-                .device()
-                .free_memory(self.memory, self.allocator);
-            self.ash_device
-                .device()
-                .destroy_buffer(self.buffer, self.allocator);
-        }
     }
 }
 
