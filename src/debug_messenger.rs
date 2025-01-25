@@ -1,36 +1,38 @@
-use std::ffi::{CStr, c_void};
-
 use ash::{
     ext,
+    prelude::*,
     vk::{
         self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT,
     },
 };
+use std::ffi::{CStr, c_void};
 
-pub struct DebugMessenger<'a> {
-    vk_instance: &'a ash::Instance,
+pub struct DebugMessenger {
     instance: ext::debug_utils::Instance,
     messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl<'a> DebugMessenger<'a> {
-    pub fn new(vk_entry: &ash::Entry, vk_instance: &'a ash::Instance) -> Self {
-        let debug_info =
-            populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
+impl DebugMessenger {
+    pub unsafe fn new(
+        ash_entry: &ash::Entry,
+        ash_instance: &ash::Instance,
+        create_info: &vk::DebugUtilsMessengerCreateInfoEXT,
+    ) -> VkResult<Self> {
+        let instance = ext::debug_utils::Instance::new(ash_entry, ash_instance);
 
-        let instance = ext::debug_utils::Instance::new(vk_entry, &vk_instance);
+        let messenger = unsafe { instance.create_debug_utils_messenger(create_info, None)? };
 
-        let messenger = unsafe {
-            instance
-                .create_debug_utils_messenger(&debug_info, None)
-                .expect("Failed to create debug messenger.")
-        };
-
-        Self {
-            vk_instance,
+        Ok(Self {
             instance,
             messenger,
+        })
+    }
+
+    pub unsafe fn cleanup(self, allocator: Option<&vk::AllocationCallbacks>) {
+        unsafe {
+            self.instance
+                .destroy_debug_utils_messenger(self.messenger, allocator);
         }
     }
 }
@@ -41,7 +43,7 @@ pub fn populate_debug_create_info(
     debug_info
         .message_severity(
             DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                // | DebugUtilsMessageSeverityFlagsEXT::INFO
+                | DebugUtilsMessageSeverityFlagsEXT::INFO
                 | DebugUtilsMessageSeverityFlagsEXT::WARNING
                 | DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )

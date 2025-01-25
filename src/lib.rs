@@ -1,6 +1,7 @@
 mod app;
 mod buffer;
 mod constants;
+mod debug_messenger;
 mod physical_device;
 mod queue_family_indices;
 mod shader_module;

@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use ash::{khr, prelude::*, vk};
 
 // lifetime is 100% not working properly, but everything is working because we're using no allocation_callbacks
@@ -66,7 +64,7 @@ impl Swapchain {
         &mut self,
         device: &ash::Device,
         render_pass: vk::RenderPass,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> VkResult<()> {
         let swapchain_image_views = &self.image_views;
 
         let mut framebuffers = Vec::with_capacity(swapchain_image_views.len());
@@ -79,8 +77,7 @@ impl Swapchain {
                 .height(self.extent().height)
                 .layers(1);
 
-            let framebuffer =
-                unsafe { device.create_framebuffer(&framebuffer_info, None).unwrap() };
+            let framebuffer = unsafe { device.create_framebuffer(&framebuffer_info, None)? };
 
             framebuffers.push(framebuffer);
         }

@@ -1,20 +1,20 @@
 use crate::{
-    buffer::Buffer, constants::*, physical_device::PhysicalDevice,
-    queue_family_indices::QueueFamilyIndices, shader_module::ShaderModule, swapchain::Swapchain,
-    uniform_buffer_object::UniformBufferObject, vertex::Vertex,
+    buffer::Buffer,
+    constants::*,
+    debug_messenger::{self, DebugMessenger},
+    physical_device::PhysicalDevice,
+    queue_family_indices::QueueFamilyIndices,
+    shader_module::ShaderModule,
+    swapchain::Swapchain,
+    uniform_buffer_object::UniformBufferObject,
+    vertex::Vertex,
 };
-use ash::{
-    ext, khr,
-    vk::{
-        self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-        DebugUtilsMessengerCallbackDataEXT,
-    },
-};
+use ash::{khr, vk};
 use core::f32;
 use glam::{Mat4, vec3};
 use std::{
     collections::HashSet,
-    ffi::{CStr, c_char, c_void},
+    ffi::{CStr, c_char},
     fs,
 };
 use winit::{
@@ -27,13 +27,12 @@ use winit::{
 };
 
 pub struct App {
-    vk_entry: ash::Entry,
-    vk_instance: Option<ash::Instance>,
+    ash_entry: ash::Entry,
+    ash_instance: Option<ash::Instance>,
     window: Option<Window>,
     surface_instance: Option<khr::surface::Instance>,
     surface: Option<vk::SurfaceKHR>,
-    debug_messenger_instance: Option<ext::debug_utils::Instance>,
-    debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
+    debug_messenger: Option<DebugMessenger>,
     queue_family_indices: Option<QueueFamilyIndices>,
     physical_device: Option<PhysicalDevice>,
     device: Option<ash::Device>,
@@ -84,12 +83,11 @@ impl ApplicationHandler for App {
 impl App {
     pub fn new(vk_entry: ash::Entry) -> Self {
         App {
-            vk_entry,
-            vk_instance: None,
+            ash_entry: vk_entry,
+            ash_instance: None,
             window: None,
             surface_instance: None,
             surface: None,
-            debug_messenger_instance: None,
             debug_messenger: None,
             queue_family_indices: None,
             physical_device: None,
@@ -139,7 +137,7 @@ impl App {
     }
 
     fn init_vk_instance(&mut self, event_loop: &ActiveEventLoop) {
-        let vk_entry = &self.vk_entry;
+        let vk_entry = &self.ash_entry;
 
         let mut enabled_extension_names = Vec::from(
             ash_window::enumerate_required_extensions(
@@ -151,8 +149,9 @@ impl App {
         // TODO: disable this on release build
         enabled_extension_names.extend(DEBUG_ENABLED_EXTENSION_NAMES);
         let enabled_layer_names = Vec::from(DEBUG_ENABLED_LAYER_NAMES);
-        let mut debug_info =
-            populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
+        let mut debug_info = debug_messenger::populate_debug_create_info(
+            vk::DebugUtilsMessengerCreateInfoEXT::default(),
+        );
 
         let enabled_extension_names = self.check_extensions_support(enabled_extension_names);
         let enabled_layer_names = self.check_layers_support(enabled_layer_names);
@@ -178,7 +177,7 @@ impl App {
             .enabled_layer_names(&enabled_layer_names)
             .push_next(&mut debug_info);
 
-        self.vk_instance = unsafe {
+        self.ash_instance = unsafe {
             Some(
                 vk_entry
                     .create_instance(&create_info, None)
@@ -192,7 +191,7 @@ impl App {
         mut enabled_extension_names: Vec<*const c_char>,
     ) -> Vec<*const c_char> {
         let available_extensions = unsafe {
-            self.vk_entry
+            self.ash_entry
                 .enumerate_instance_extension_properties(None)
                 .unwrap()
         };
@@ -219,8 +218,11 @@ impl App {
         &self,
         mut enabled_layer_names: Vec<*const c_char>,
     ) -> Vec<*const c_char> {
-        let available_layers =
-            unsafe { self.vk_entry.enumerate_instance_layer_properties().unwrap() };
+        let available_layers = unsafe {
+            self.ash_entry
+                .enumerate_instance_layer_properties()
+                .unwrap()
+        };
 
         enabled_layer_names.retain(|x| {
             let x_cstr = unsafe { CStr::from_ptr(*x) };
@@ -242,20 +244,16 @@ impl App {
     }
 
     fn init_debug_messenger(&mut self) {
-        let vk_entry = &self.vk_entry;
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let ash_entry = &self.ash_entry;
+        let ash_instance = self.ash_instance.as_ref().unwrap();
 
-        let debug_info =
-            populate_debug_create_info(vk::DebugUtilsMessengerCreateInfoEXT::default());
-
-        self.debug_messenger_instance =
-            Some(ext::debug_utils::Instance::new(vk_entry, &vk_instance));
-        let debug_messenger_instance = self.debug_messenger_instance.as_ref().unwrap();
+        let create_info = debug_messenger::populate_debug_create_info(
+            vk::DebugUtilsMessengerCreateInfoEXT::default(),
+        );
 
         self.debug_messenger = unsafe {
             Some(
-                debug_messenger_instance
-                    .create_debug_utils_messenger(&debug_info, None)
+                DebugMessenger::new(ash_entry, ash_instance, &create_info)
                     .expect("Failed to create debug messenger."),
             )
         };
@@ -271,8 +269,8 @@ impl App {
     }
 
     fn init_surface(&mut self) {
-        let vk_entry = &self.vk_entry;
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_entry = &self.ash_entry;
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let window = self.window.as_ref().unwrap();
 
         self.surface_instance = Some(khr::surface::Instance::new(vk_entry, &vk_instance));
@@ -292,7 +290,7 @@ impl App {
     }
 
     fn init_physical_device(&mut self) {
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let physical_devices = unsafe {
             vk_instance
                 .enumerate_physical_devices()
@@ -362,7 +360,7 @@ impl App {
     }
 
     fn init_logical_device(&mut self) {
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
         let queue_family_indices = self.queue_family_indices.as_ref().unwrap();
         let present_family = queue_family_indices.present_family.unwrap();
@@ -457,7 +455,7 @@ impl App {
             .clipped(true)
             .old_swapchain(vk::SwapchainKHR::null());
 
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let swapchain =
             unsafe { Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap() };
@@ -666,7 +664,7 @@ impl App {
     }
 
     fn init_vertex_buffer(&mut self) {
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(vk_instance);
@@ -764,7 +762,7 @@ impl App {
     }
 
     fn init_index_buffer(&mut self) {
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(vk_instance);
@@ -815,7 +813,7 @@ impl App {
     }
 
     fn init_uniform_buffers(&mut self) {
-        let vk_instance = self.vk_instance.as_ref().unwrap();
+        let vk_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(vk_instance);
@@ -1145,11 +1143,8 @@ impl App {
 impl Drop for App {
     // i should probably use macro lol
     fn drop(&mut self) {
-        let vk_instance = self.vk_instance.take().unwrap();
         let device = self.device.take().unwrap();
-        let debug_messenger_instance = self.debug_messenger_instance.take().unwrap();
         let surface_instance = self.surface_instance.take().unwrap();
-        let swapchain = self.swapchain.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
         let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
@@ -1184,41 +1179,11 @@ impl Drop for App {
             device.destroy_pipeline(graphics_pipeline, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
-            swapchain.cleanup(&device, None);
+            self.swapchain.take().unwrap().cleanup(&device, None);
             surface_instance.destroy_surface(self.surface.take().unwrap(), None);
-            debug_messenger_instance
-                .destroy_debug_utils_messenger(self.debug_messenger.take().unwrap(), None);
+            self.debug_messenger.take().unwrap().cleanup(None);
             device.destroy_device(None);
-            vk_instance.destroy_instance(None);
+            self.ash_instance.take().unwrap().destroy_instance(None);
         }
     }
-}
-
-fn populate_debug_create_info(
-    debug_info: vk::DebugUtilsMessengerCreateInfoEXT,
-) -> vk::DebugUtilsMessengerCreateInfoEXT {
-    debug_info
-        .message_severity(
-            DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                | DebugUtilsMessageSeverityFlagsEXT::INFO
-                | DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        )
-        .message_type(
-            DebugUtilsMessageTypeFlagsEXT::GENERAL
-                | DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-        )
-        .pfn_user_callback(Some(debug_callback))
-}
-
-unsafe extern "system" fn debug_callback(
-    _: DebugUtilsMessageSeverityFlagsEXT,
-    _: DebugUtilsMessageTypeFlagsEXT,
-    callback_data: *const DebugUtilsMessengerCallbackDataEXT<'_>,
-    _: *mut c_void,
-) -> vk::Bool32 {
-    let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
-    println!("DEBUG: {}", String::from_utf8_lossy(s.to_bytes()));
-    vk::FALSE
 }
