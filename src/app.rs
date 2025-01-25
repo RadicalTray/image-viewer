@@ -26,7 +26,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-pub struct App<'a> {
+pub struct App {
     vk_entry: ash::Entry,
     vk_instance: Option<ash::Instance>,
     window: Option<Window>,
@@ -39,7 +39,7 @@ pub struct App<'a> {
     device: Option<ash::Device>,
     graphics_queue: Option<vk::Queue>,
     present_queue: Option<vk::Queue>,
-    swapchain: Option<Swapchain<'a>>,
+    swapchain: Option<Swapchain>,
     render_pass: Option<vk::RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
     graphics_pipeline_layout: Option<vk::PipelineLayout>,
@@ -58,7 +58,7 @@ pub struct App<'a> {
     start_time: std::time::SystemTime,
 }
 
-impl<'a> ApplicationHandler for App<'a> {
+impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.init(event_loop);
     }
@@ -81,7 +81,7 @@ impl<'a> ApplicationHandler for App<'a> {
 }
 
 /// clean up on Drop
-impl<'a> App<'a> {
+impl App {
     pub fn new(vk_entry: ash::Entry) -> Self {
         App {
             vk_entry,
@@ -459,8 +459,8 @@ impl<'a> App<'a> {
 
         let vk_instance = self.vk_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
-        let mut swapchain = Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap();
-        swapchain.init_image_views(device).unwrap();
+        let swapchain =
+            unsafe { Swapchain::new(vk_instance, device, &swapchain_info, None).unwrap() };
         self.swapchain = Some(swapchain);
     }
 
@@ -639,11 +639,13 @@ impl<'a> App<'a> {
         let device = self.device.as_ref().unwrap();
         let render_pass = self.render_pass.as_ref().unwrap();
 
-        self.swapchain
-            .as_mut()
-            .unwrap()
-            .init_framebuffers(device, *render_pass)
-            .unwrap();
+        unsafe {
+            self.swapchain
+                .as_mut()
+                .unwrap()
+                .init_framebuffers(device, *render_pass)
+                .unwrap();
+        }
     }
 
     fn init_command_pool(&mut self) {
@@ -1130,15 +1132,17 @@ impl<'a> App<'a> {
         let swapchain = self.swapchain.take().unwrap();
         let device = self.device.as_ref().unwrap();
 
-        unsafe { device.device_wait_idle().unwrap() };
+        unsafe {
+            device.device_wait_idle().unwrap();
+            swapchain.cleanup(device, None);
+        };
 
-        swapchain.cleanup(device, None);
         self.init_swapchain();
         self.init_framebuffers();
     }
 }
 
-impl<'a> Drop for App<'a> {
+impl Drop for App {
     // i should probably use macro lol
     fn drop(&mut self) {
         let vk_instance = self.vk_instance.take().unwrap();
@@ -1176,11 +1180,11 @@ impl<'a> Drop for App<'a> {
             index_buffer.cleanup(&device, None);
             vertex_buffer.cleanup(&device, None);
             device.destroy_command_pool(command_pool, None);
-            swapchain.cleanup(&device, None);
             device.destroy_pipeline_layout(graphics_pipeline_layout, None);
             device.destroy_pipeline(graphics_pipeline, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
+            swapchain.cleanup(&device, None);
             surface_instance.destroy_surface(self.surface.take().unwrap(), None);
             debug_messenger_instance
                 .destroy_debug_utils_messenger(self.debug_messenger.take().unwrap(), None);
