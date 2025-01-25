@@ -7,6 +7,7 @@ mod descriptor_pool;
 mod descriptor_set_layout;
 mod device;
 mod fence;
+mod instance;
 mod physical_device;
 mod pipeline;
 mod queue;

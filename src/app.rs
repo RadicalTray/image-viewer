@@ -7,6 +7,7 @@ use crate::{
     descriptor_set_layout::DescriptorSetLayout,
     device::Device,
     fence::Fence,
+    instance::Instance,
     physical_device::PhysicalDevice,
     pipeline::Pipeline,
     queue::{QueueFamilyIndices, Queues},
@@ -36,7 +37,7 @@ use winit::{
 
 pub struct App {
     ash_entry: ash::Entry,
-    ash_instance: Option<ash::Instance>,
+    ash_instance: Option<Instance>,
     window: Option<Window>,
     surface: Option<Surface>,
     debug_messenger: Option<DebugMessenger>,
@@ -180,8 +181,7 @@ impl App {
 
         self.ash_instance = unsafe {
             Some(
-                ash_entry
-                    .create_instance(&create_info, None)
+                Instance::new(ash_entry, &create_info, None)
                     .expect("Failed to create vulkan instance."),
             )
         };
@@ -249,7 +249,7 @@ impl App {
 
     fn init_debug_messenger(&mut self) {
         let ash_entry = &self.ash_entry;
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
 
         let create_info = debug_messenger::populate_debug_create_info(
             vk::DebugUtilsMessengerCreateInfoEXT::default(),
@@ -274,7 +274,7 @@ impl App {
 
     fn init_surface(&mut self) {
         let ash_entry = &self.ash_entry;
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let window = self.window.as_ref().unwrap();
 
         self.surface = unsafe {
@@ -283,7 +283,7 @@ impl App {
     }
 
     fn init_physical_device(&mut self) {
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let physical_devices = unsafe {
             ash_instance
                 .enumerate_physical_devices()
@@ -354,7 +354,7 @@ impl App {
     }
 
     fn init_logical_device(&mut self) {
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let physical_device = self.physical_device.as_ref().unwrap();
         let queue_family_indices = self.queue_family_indices.as_ref().unwrap();
         let present_family = queue_family_indices.present_family.unwrap();
@@ -454,7 +454,7 @@ impl App {
             .clipped(true)
             .old_swapchain(vk::SwapchainKHR::null());
 
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let device = self.device.as_ref().unwrap();
         let swapchain = unsafe {
             Swapchain::new(ash_instance, device.device(), &swapchain_info, None).unwrap()
@@ -659,7 +659,7 @@ impl App {
     }
 
     fn init_vertex_buffer(&mut self) {
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let device = self.device.as_ref().unwrap().device();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(ash_instance);
@@ -757,7 +757,7 @@ impl App {
     }
 
     fn init_index_buffer(&mut self) {
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let device = self.device.as_ref().unwrap().device();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(ash_instance);
@@ -808,7 +808,7 @@ impl App {
     }
 
     fn init_uniform_buffers(&mut self) {
-        let ash_instance = self.ash_instance.as_ref().unwrap();
+        let ash_instance = self.ash_instance.as_ref().unwrap().instance();
         let device = self.device.as_ref().unwrap().device();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(ash_instance);
@@ -1170,7 +1170,7 @@ impl Drop for App {
             self.surface.take().unwrap().cleanup(None);
             self.debug_messenger.take().unwrap().cleanup(None);
             self.device.take().unwrap().cleanup(None);
-            self.ash_instance.take().unwrap().destroy_instance(None);
+            self.ash_instance.take().unwrap().cleanup(None);
         }
     }
 }
