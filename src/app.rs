@@ -3,6 +3,7 @@ use crate::{
     constants::*,
     debug_messenger::{self, DebugMessenger},
     physical_device::PhysicalDevice,
+    pipeline::Pipeline,
     queue::{QueueFamilyIndices, Queues},
     shader_module::ShaderModule,
     swapchain::Swapchain,
@@ -40,8 +41,7 @@ pub struct App {
     swapchain: Option<Swapchain>,
     render_pass: Option<vk::RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
-    graphics_pipeline_layout: Option<vk::PipelineLayout>,
-    graphics_pipeline: Option<vk::Pipeline>,
+    graphics_pipeline: Option<Pipeline>,
     command_pool: Option<vk::CommandPool>,
     vertex_buffer: Option<Buffer>,
     index_buffer: Option<Buffer>,
@@ -95,7 +95,6 @@ impl App {
             swapchain: None,
             render_pass: None,
             descriptor_set_layout: None,
-            graphics_pipeline_layout: None,
             graphics_pipeline: None,
             command_pool: None,
             vertex_buffer: None,
@@ -631,8 +630,10 @@ impl App {
                 .unwrap()
         };
 
-        self.graphics_pipeline_layout = Some(graphics_pipeline_layout);
-        self.graphics_pipeline = Some(graphics_pipeline[0]);
+        self.graphics_pipeline = Some(Pipeline::from(
+            graphics_pipeline_layout,
+            graphics_pipeline[0],
+        ));
     }
 
     fn init_framebuffers(&mut self) {
@@ -1020,12 +1021,14 @@ impl App {
         let device = self.device.as_ref().unwrap();
         let render_pass = *self.render_pass.as_ref().unwrap();
         let swapchain = self.swapchain.as_ref().unwrap();
-        let graphics_pipeline = *self.graphics_pipeline.as_ref().unwrap();
+        let pipeline = self.graphics_pipeline.as_ref().unwrap();
         let vertex_buffer = self.vertex_buffer.as_ref().unwrap();
         let index_buffer = self.index_buffer.as_ref().unwrap();
-        let pipeline_layout = *self.graphics_pipeline_layout.as_ref().unwrap();
         let descriptor_sets = self.descriptor_sets.as_ref().unwrap();
         let current_frame = self.current_frame;
+
+        let layout = pipeline.layout();
+        let pipeline = pipeline.pipeline();
 
         let image_index: usize = image_index.try_into().unwrap();
         let framebuffers = swapchain.framebuffers().unwrap();
@@ -1056,11 +1059,7 @@ impl App {
                 &render_pass_info,
                 vk::SubpassContents::INLINE,
             );
-            device.cmd_bind_pipeline(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                graphics_pipeline,
-            );
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
             device.cmd_bind_vertex_buffers(command_buffer, 0, &[vertex_buffer.buffer()], &[0]);
             device.cmd_bind_index_buffer(
                 command_buffer,
@@ -1082,7 +1081,7 @@ impl App {
             device.cmd_bind_descriptor_sets(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                pipeline_layout,
+                layout,
                 0,
                 &[descriptor_sets[current_frame]],
                 &[],
@@ -1149,7 +1148,6 @@ impl Drop for App {
         let surface_instance = self.surface_instance.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
-        let graphics_pipeline_layout = self.graphics_pipeline_layout.take().unwrap();
         let graphics_pipeline = self.graphics_pipeline.take().unwrap();
         let command_pool = self.command_pool.take().unwrap();
         let vertex_buffer = self.vertex_buffer.take().unwrap();
@@ -1177,8 +1175,7 @@ impl Drop for App {
             index_buffer.cleanup(&device, None);
             vertex_buffer.cleanup(&device, None);
             device.destroy_command_pool(command_pool, None);
-            device.destroy_pipeline_layout(graphics_pipeline_layout, None);
-            device.destroy_pipeline(graphics_pipeline, None);
+            graphics_pipeline.cleanup(&device, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
             self.swapchain.take().unwrap().cleanup(&device, None);
