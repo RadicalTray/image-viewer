@@ -1135,15 +1135,10 @@ impl Drop for App {
         let device = self.device.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
-        let graphics_pipeline = self.graphics_pipeline.take().unwrap();
-        let command_pool = self.command_pool.take().unwrap();
-        let vertex_buffer = self.vertex_buffer.take().unwrap();
-        let index_buffer = self.index_buffer.take().unwrap();
-        let uniform_buffers = self.uniform_buffers.take().unwrap();
         let descriptor_pool = self.descriptor_pool.take().unwrap();
+
         let image_available_sems = self.image_available_sems.take().unwrap();
         let render_finished_sems = self.render_finished_sems.take().unwrap();
-        let in_flight_fences = self.in_flight_fences.take().unwrap();
         let sems_chain = image_available_sems
             .into_iter()
             .chain(render_finished_sems.into_iter());
@@ -1152,19 +1147,26 @@ impl Drop for App {
             device.device_wait_idle().unwrap();
 
             sems_chain.for_each(|x| device.destroy_semaphore(x, None));
-            in_flight_fences
+            self.in_flight_fences
+                .take()
+                .unwrap()
                 .into_iter()
                 .for_each(|x| device.destroy_fence(x, None));
             device.destroy_descriptor_pool(descriptor_pool, None);
-            uniform_buffers
+            self.uniform_buffers
+                .take()
+                .unwrap()
                 .into_iter()
                 .for_each(|x| x.cleanup(&device, None));
-            index_buffer.cleanup(&device, None);
-            vertex_buffer.cleanup(&device, None);
-            command_pool.cleanup(&device, None);
+            self.index_buffer.take().unwrap().cleanup(&device, None);
+            self.vertex_buffer.take().unwrap().cleanup(&device, None);
+            self.command_pool.take().unwrap().cleanup(&device, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
-            graphics_pipeline.cleanup(&device, None);
+            self.graphics_pipeline
+                .take()
+                .unwrap()
+                .cleanup(&device, None);
             self.swapchain.take().unwrap().cleanup(&device, None);
             self.surface.take().unwrap().cleanup(None);
             self.debug_messenger.take().unwrap().cleanup(None);
