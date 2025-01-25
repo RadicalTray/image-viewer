@@ -1135,16 +1135,15 @@ impl Drop for App {
         let device = self.device.take().unwrap();
         let descriptor_pool = self.descriptor_pool.take().unwrap();
 
-        let image_available_sems = self.image_available_sems.take().unwrap();
-        let render_finished_sems = self.render_finished_sems.take().unwrap();
-        let sems = image_available_sems
-            .into_iter()
-            .chain(render_finished_sems.into_iter());
-
         unsafe {
             device.device_wait_idle().unwrap();
 
-            sems.for_each(|x| x.cleanup(&device, None));
+            self.image_available_sems
+                .take()
+                .unwrap()
+                .into_iter()
+                .chain(self.render_finished_sems.take().unwrap().into_iter())
+                .for_each(|x| x.cleanup(&device, None));
             self.in_flight_fences
                 .take()
                 .unwrap()
