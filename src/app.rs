@@ -5,6 +5,7 @@ use crate::{
     debug_messenger::{self, DebugMessenger},
     descriptor_pool::DescriptorPool,
     descriptor_set_layout::DescriptorSetLayout,
+    device::Device,
     fence::Fence,
     physical_device::PhysicalDevice,
     pipeline::Pipeline,
@@ -41,7 +42,7 @@ pub struct App {
     debug_messenger: Option<DebugMessenger>,
     queue_family_indices: Option<QueueFamilyIndices>,
     physical_device: Option<PhysicalDevice>,
-    device: Option<ash::Device>,
+    device: Option<Device>,
     queues: Option<Queues>,
     swapchain: Option<Swapchain>,
     render_pass: Option<RenderPass>,
@@ -382,8 +383,8 @@ impl App {
 
         self.queues = unsafe {
             Some(Queues {
-                graphics: device.get_device_queue(graphics_family, 0),
-                present: device.get_device_queue(present_family, 0),
+                graphics: device.device().get_device_queue(graphics_family, 0),
+                present: device.device().get_device_queue(present_family, 0),
             })
         };
         self.device = Some(device);
@@ -455,13 +456,14 @@ impl App {
 
         let ash_instance = self.ash_instance.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
-        let swapchain =
-            unsafe { Swapchain::new(ash_instance, device, &swapchain_info, None).unwrap() };
+        let swapchain = unsafe {
+            Swapchain::new(ash_instance, device.device(), &swapchain_info, None).unwrap()
+        };
         self.swapchain = Some(swapchain);
     }
 
     fn init_render_pass(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let swapchain = self.swapchain.as_ref().unwrap();
 
         let color_attachment = vk::AttachmentDescription::default()
@@ -505,7 +507,7 @@ impl App {
     }
 
     fn init_descriptor_set_layout(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         let ubo_layout_binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
@@ -522,7 +524,7 @@ impl App {
     }
 
     fn init_graphics_pipeline(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         let vert_shader_code = fs::read("build/shaders/vert.spv").unwrap();
         let frag_shader_code = fs::read("build/shaders/frag.spv").unwrap();
@@ -631,7 +633,7 @@ impl App {
     }
 
     fn init_framebuffers(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let render_pass = self.render_pass.as_ref().unwrap();
 
         unsafe {
@@ -645,7 +647,7 @@ impl App {
 
     fn init_command_pool(&mut self) {
         let indices = self.queue_family_indices.as_ref().unwrap();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         let command_pool_info = vk::CommandPoolCreateInfo::default()
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
@@ -658,7 +660,7 @@ impl App {
 
     fn init_vertex_buffer(&mut self) {
         let ash_instance = self.ash_instance.as_ref().unwrap();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(ash_instance);
 
@@ -714,7 +716,7 @@ impl App {
         size: vk::DeviceSize,
     ) {
         let command_pool = self.command_pool.as_ref().unwrap();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         let command_buffer_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(command_pool.pool())
@@ -756,7 +758,7 @@ impl App {
 
     fn init_index_buffer(&mut self) {
         let ash_instance = self.ash_instance.as_ref().unwrap();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(ash_instance);
 
@@ -807,7 +809,7 @@ impl App {
 
     fn init_uniform_buffers(&mut self) {
         let ash_instance = self.ash_instance.as_ref().unwrap();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let physical_device = self.physical_device.as_ref().unwrap();
         let device_mem_props = physical_device.query_memory_properties(ash_instance);
 
@@ -840,7 +842,7 @@ impl App {
     }
 
     fn init_descriptor_pool(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         let pool_size = vk::DescriptorPoolSize::default()
             .descriptor_count(MAX_FRAMES_IN_FLIGHT.try_into().unwrap());
@@ -856,7 +858,7 @@ impl App {
     fn init_descriptor_sets(&mut self) {
         let layout = self.descriptor_set_layout.as_ref().unwrap().layout();
         let descriptor_pool = self.descriptor_pool.as_ref().unwrap().pool();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let uniform_buffers = self.uniform_buffers.as_ref().unwrap();
 
         let layouts = vec![layout; MAX_FRAMES_IN_FLIGHT.try_into().unwrap()];
@@ -884,7 +886,7 @@ impl App {
     }
 
     fn init_command_buffers(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let command_pool = self.command_pool.as_ref().unwrap();
 
         let alloc_info = vk::CommandBufferAllocateInfo::default()
@@ -897,7 +899,7 @@ impl App {
     }
 
     fn init_sync_objects(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         let mut image_available_sems = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
         let mut render_finished_sems = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
@@ -920,7 +922,7 @@ impl App {
     }
 
     fn draw(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let in_flight_fences = self.in_flight_fences.as_ref().unwrap();
         let command_buffers = self.command_buffers.as_ref().unwrap();
         let current_frame = self.current_frame;
@@ -955,7 +957,7 @@ impl App {
             self.update_uniform_buffers(current_frame);
 
             let swapchain = self.swapchain.as_ref().unwrap();
-            let device = self.device.as_ref().unwrap();
+            let device = self.device.as_ref().unwrap().device();
             let image_available_sems = self.image_available_sems.as_ref().unwrap();
             let render_finished_sems = self.render_finished_sems.as_ref().unwrap();
             let command_buffers = self.command_buffers.as_ref().unwrap();
@@ -1008,7 +1010,7 @@ impl App {
     }
 
     fn record_command_buffer(&mut self, command_buffer: vk::CommandBuffer, image_index: u32) {
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
         let render_pass = self.render_pass.as_ref().unwrap();
         let swapchain = self.swapchain.as_ref().unwrap();
         let pipeline = self.graphics_pipeline.as_ref().unwrap();
@@ -1119,7 +1121,7 @@ impl App {
 
     fn recreate_swapchain(&mut self) {
         let swapchain = self.swapchain.take().unwrap();
-        let device = self.device.as_ref().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         unsafe {
             device.device_wait_idle().unwrap();
@@ -1133,7 +1135,7 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        let device = self.device.take().unwrap();
+        let device = self.device.as_ref().unwrap().device();
 
         unsafe {
             device.device_wait_idle().unwrap();
@@ -1143,34 +1145,31 @@ impl Drop for App {
                 .unwrap()
                 .into_iter()
                 .chain(self.render_finished_sems.take().unwrap().into_iter())
-                .for_each(|x| x.cleanup(&device, None));
+                .for_each(|x| x.cleanup(device, None));
             self.in_flight_fences
                 .take()
                 .unwrap()
                 .into_iter()
-                .for_each(|x| x.cleanup(&device, None));
-            self.descriptor_pool.take().unwrap().cleanup(&device, None);
+                .for_each(|x| x.cleanup(device, None));
+            self.descriptor_pool.take().unwrap().cleanup(device, None);
             self.uniform_buffers
                 .take()
                 .unwrap()
                 .into_iter()
-                .for_each(|x| x.cleanup(&device, None));
-            self.index_buffer.take().unwrap().cleanup(&device, None);
-            self.vertex_buffer.take().unwrap().cleanup(&device, None);
-            self.command_pool.take().unwrap().cleanup(&device, None);
+                .for_each(|x| x.cleanup(device, None));
+            self.index_buffer.take().unwrap().cleanup(device, None);
+            self.vertex_buffer.take().unwrap().cleanup(device, None);
+            self.command_pool.take().unwrap().cleanup(device, None);
             self.descriptor_set_layout
                 .take()
                 .unwrap()
-                .cleanup(&device, None);
-            self.render_pass.take().unwrap().cleanup(&device, None);
-            self.graphics_pipeline
-                .take()
-                .unwrap()
-                .cleanup(&device, None);
-            self.swapchain.take().unwrap().cleanup(&device, None);
+                .cleanup(device, None);
+            self.render_pass.take().unwrap().cleanup(device, None);
+            self.graphics_pipeline.take().unwrap().cleanup(device, None);
+            self.swapchain.take().unwrap().cleanup(device, None);
             self.surface.take().unwrap().cleanup(None);
             self.debug_messenger.take().unwrap().cleanup(None);
-            device.destroy_device(None);
+            self.device.take().unwrap().cleanup(None);
             self.ash_instance.take().unwrap().destroy_instance(None);
         }
     }

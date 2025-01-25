@@ -1,9 +1,9 @@
+use crate::device::Device;
+use ash::{khr, prelude::*, vk};
 use std::{
     error::Error,
     ffi::{CStr, c_char},
 };
-
-use ash::{khr, prelude::*, vk};
 
 // idk if instance is really associated with this
 pub struct PhysicalDevice {
@@ -75,9 +75,13 @@ impl PhysicalDevice {
         vk_instance: &ash::Instance,
         device_create_info: &vk::DeviceCreateInfo,
         allocation_callbacks: Option<&vk::AllocationCallbacks<'_>>,
-    ) -> VkResult<ash::Device> {
+    ) -> VkResult<Device> {
         unsafe {
-            vk_instance.create_device(self.device(), device_create_info, allocation_callbacks)
+            Ok(Device::from(vk_instance.create_device(
+                self.device(),
+                device_create_info,
+                allocation_callbacks,
+            )?))
         }
     }
 
