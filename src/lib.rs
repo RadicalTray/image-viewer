@@ -7,6 +7,7 @@ mod fence;
 mod physical_device;
 mod pipeline;
 mod queue;
+mod render_pass;
 mod semaphore;
 mod shader_module;
 mod surface;

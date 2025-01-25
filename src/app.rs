@@ -7,6 +7,7 @@ use crate::{
     physical_device::PhysicalDevice,
     pipeline::Pipeline,
     queue::{QueueFamilyIndices, Queues},
+    render_pass::RenderPass,
     semaphore::Semaphore,
     shader_module::ShaderModule,
     surface::Surface,
@@ -41,7 +42,7 @@ pub struct App {
     device: Option<ash::Device>,
     queues: Option<Queues>,
     swapchain: Option<Swapchain>,
-    render_pass: Option<vk::RenderPass>,
+    render_pass: Option<RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
     graphics_pipeline: Option<Pipeline>,
     command_pool: Option<CommandPool>,
@@ -496,7 +497,7 @@ impl App {
             .subpasses(&subpasses)
             .dependencies(&dependencies);
 
-        let render_pass = unsafe { device.create_render_pass(&render_pass_info, None).unwrap() };
+        let render_pass = unsafe { RenderPass::new(device, &render_pass_info, None).unwrap() };
 
         self.render_pass = Some(render_pass);
     }
@@ -603,7 +604,7 @@ impl App {
                 .unwrap()
         };
 
-        let render_pass = *self.render_pass.as_ref().unwrap();
+        let render_pass = self.render_pass.as_ref().unwrap();
         let graphics_pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stage_infos)
             .vertex_input_state(&vertex_input_state_info)
@@ -614,7 +615,7 @@ impl App {
             .color_blend_state(&color_blend_state_info)
             .dynamic_state(&dynamic_state_info)
             .layout(graphics_pipeline_layout)
-            .render_pass(render_pass)
+            .render_pass(render_pass.render_pass())
             .subpass(0);
 
         let create_infos = [graphics_pipeline_info];
@@ -638,7 +639,7 @@ impl App {
             self.swapchain
                 .as_mut()
                 .unwrap()
-                .init_framebuffers(device, *render_pass)
+                .init_framebuffers(device, render_pass.render_pass())
                 .unwrap();
         }
     }
@@ -1009,7 +1010,7 @@ impl App {
 
     fn record_command_buffer(&mut self, command_buffer: vk::CommandBuffer, image_index: u32) {
         let device = self.device.as_ref().unwrap();
-        let render_pass = *self.render_pass.as_ref().unwrap();
+        let render_pass = self.render_pass.as_ref().unwrap();
         let swapchain = self.swapchain.as_ref().unwrap();
         let pipeline = self.graphics_pipeline.as_ref().unwrap();
         let vertex_buffer = self.vertex_buffer.as_ref().unwrap();
@@ -1036,7 +1037,7 @@ impl App {
                 clear_color
             }];
             let render_pass_info = vk::RenderPassBeginInfo::default()
-                .render_pass(render_pass)
+                .render_pass(render_pass.render_pass())
                 .framebuffer(framebuffer)
                 .render_area(vk::Rect2D {
                     offset: vk::Offset2D::default().x(0).y(0),
@@ -1134,7 +1135,6 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         let device = self.device.take().unwrap();
-        let render_pass = self.render_pass.take().unwrap();
         let descriptor_set_layout = self.descriptor_set_layout.take().unwrap();
         let descriptor_pool = self.descriptor_pool.take().unwrap();
 
@@ -1163,7 +1163,7 @@ impl Drop for App {
             self.vertex_buffer.take().unwrap().cleanup(&device, None);
             self.command_pool.take().unwrap().cleanup(&device, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
-            device.destroy_render_pass(render_pass, None);
+            self.render_pass.take().unwrap().cleanup(&device, None);
             self.graphics_pipeline
                 .take()
                 .unwrap()
