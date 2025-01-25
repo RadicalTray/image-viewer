@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ash = { version = "0.38.0" }
+ash = "0.38.0"
 ash-window = "0.13.0"
-glam = { version = "0.29.2", features = ["glam-assert"] }
+glam = "0.29.2"
 winit = "0.30.8"
 libloading = "0.8.6"
+
+[features]
+default = ["debug"]
+debug = ["glam/glam-assert"]
