@@ -543,8 +543,8 @@ impl App {
             .name(c"main");
 
         let shader_stage_infos = [vert_shader_stage_info, frag_shader_stage_info];
-        let bind_desc = Vertex::get_binding_descriptions();
-        let attr_desc = Vertex::get_attribute_descriptions();
+        let bind_desc = Vertex::get_binding_descriptions().unwrap();
+        let attr_desc = Vertex::get_attribute_descriptions().unwrap();
 
         let vertex_input_state_info = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(&bind_desc)
@@ -1168,6 +1168,7 @@ impl Drop for App {
             self.graphics_pipeline.take().unwrap().cleanup(device, None);
             self.swapchain.take().unwrap().cleanup(device, None);
             self.surface.take().unwrap().cleanup(None);
+            // TODO: disable this on release build
             self.debug_messenger.take().unwrap().cleanup(None);
             self.device.take().unwrap().cleanup(None);
             self.ash_instance.take().unwrap().cleanup(None);

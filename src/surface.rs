@@ -1,4 +1,4 @@
-use ash::{khr, prelude::*, vk};
+use ash::{khr, vk};
 use winit::{
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     window::Window,
@@ -14,14 +14,14 @@ impl Surface {
         ash_entry: &ash::Entry,
         ash_instance: &ash::Instance,
         window: &Window,
-    ) -> VkResult<Self> {
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let instance = khr::surface::Instance::new(ash_entry, ash_instance);
         let surface = unsafe {
             ash_window::create_surface(
                 ash_entry,
                 ash_instance,
-                window.display_handle().unwrap().as_raw(),
-                window.window_handle().unwrap().as_raw(),
+                window.display_handle()?.as_raw(),
+                window.window_handle()?.as_raw(),
                 None,
             )?
         };
