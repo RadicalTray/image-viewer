@@ -1,5 +1,6 @@
 use crate::{
     buffer::Buffer,
+    command_pool::CommandPool,
     constants::*,
     debug_messenger::{self, DebugMessenger},
     physical_device::PhysicalDevice,
@@ -41,7 +42,7 @@ pub struct App {
     render_pass: Option<vk::RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
     graphics_pipeline: Option<Pipeline>,
-    command_pool: Option<vk::CommandPool>,
+    command_pool: Option<CommandPool>,
     vertex_buffer: Option<Buffer>,
     index_buffer: Option<Buffer>,
     uniform_buffers: Option<Vec<Buffer>>,
@@ -648,11 +649,7 @@ impl App {
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(indices.graphics_family.unwrap());
 
-        let command_pool = unsafe {
-            device
-                .create_command_pool(&command_pool_info, None)
-                .unwrap()
-        };
+        let command_pool = unsafe { CommandPool::new(device, &command_pool_info, None).unwrap() };
 
         self.command_pool = Some(command_pool);
     }
@@ -714,11 +711,11 @@ impl App {
         dst_buffer: vk::Buffer,
         size: vk::DeviceSize,
     ) {
-        let command_pool = *self.command_pool.as_ref().unwrap();
+        let command_pool = self.command_pool.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
 
         let command_buffer_info = vk::CommandBufferAllocateInfo::default()
-            .command_pool(command_pool)
+            .command_pool(command_pool.pool())
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
@@ -751,7 +748,7 @@ impl App {
                 .queue_submit(graphics_queue, &submits, vk::Fence::null())
                 .unwrap();
             device.queue_wait_idle(graphics_queue).unwrap();
-            device.free_command_buffers(command_pool, &command_buffers);
+            device.free_command_buffers(command_pool.pool(), &command_buffers);
         };
     }
 
@@ -886,10 +883,10 @@ impl App {
 
     fn init_command_buffers(&mut self) {
         let device = self.device.as_ref().unwrap();
-        let command_pool = *self.command_pool.as_ref().unwrap();
+        let command_pool = self.command_pool.as_ref().unwrap();
 
         let alloc_info = vk::CommandBufferAllocateInfo::default()
-            .command_pool(command_pool)
+            .command_pool(command_pool.pool())
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(MAX_FRAMES_IN_FLIGHT.try_into().unwrap());
 
@@ -1164,7 +1161,7 @@ impl Drop for App {
                 .for_each(|x| x.cleanup(&device, None));
             index_buffer.cleanup(&device, None);
             vertex_buffer.cleanup(&device, None);
-            device.destroy_command_pool(command_pool, None);
+            command_pool.cleanup(&device, None);
             device.destroy_descriptor_set_layout(descriptor_set_layout, None);
             device.destroy_render_pass(render_pass, None);
             graphics_pipeline.cleanup(&device, None);

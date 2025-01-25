@@ -1,5 +1,6 @@
 mod app;
 mod buffer;
+mod command_pool;
 mod constants;
 mod debug_messenger;
 mod physical_device;
