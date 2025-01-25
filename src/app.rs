@@ -147,13 +147,12 @@ impl App {
             )
             .unwrap(),
         );
+        let mut enabled_layer_names = Vec::new();
 
-        // TODO: disable this on release build
-        enabled_extension_names.extend(DEBUG_ENABLED_EXTENSION_NAMES);
-        let enabled_layer_names = Vec::from(DEBUG_ENABLED_LAYER_NAMES);
-        let mut debug_info = debug_messenger::populate_debug_create_info(
-            vk::DebugUtilsMessengerCreateInfoEXT::default(),
-        );
+        if cfg!(debug_assertions) {
+            enabled_extension_names.extend(DEBUG_ENABLED_EXTENSION_NAMES);
+            enabled_layer_names.extend(DEBUG_ENABLED_LAYER_NAMES);
+        }
 
         let enabled_extension_names = self.check_extensions_support(enabled_extension_names);
         let enabled_layer_names = self.check_layers_support(enabled_layer_names);
@@ -176,8 +175,17 @@ impl App {
         let create_info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
             .enabled_extension_names(&enabled_extension_names)
-            .enabled_layer_names(&enabled_layer_names)
-            .push_next(&mut debug_info);
+            .enabled_layer_names(&enabled_layer_names);
+
+        let mut debug_info = debug_messenger::populate_debug_create_info(
+            vk::DebugUtilsMessengerCreateInfoEXT::default(),
+        );
+
+        let create_info = if cfg!(debug_assertions) {
+            create_info.push_next(&mut debug_info)
+        } else {
+            create_info
+        };
 
         self.ash_instance = unsafe {
             Some(
@@ -186,8 +194,9 @@ impl App {
             )
         };
 
-        // TODO: disable this on release build
-        self.init_debug_messenger();
+        if cfg!(debug_assertions) {
+            self.init_debug_messenger();
+        }
     }
 
     fn check_extensions_support(
@@ -1168,8 +1177,9 @@ impl Drop for App {
             self.graphics_pipeline.take().unwrap().cleanup(device, None);
             self.swapchain.take().unwrap().cleanup(device, None);
             self.surface.take().unwrap().cleanup(None);
-            // TODO: disable this on release build
-            self.debug_messenger.take().unwrap().cleanup(None);
+            if cfg!(debug_assertions) {
+                self.debug_messenger.take().unwrap().cleanup(None);
+            }
             self.device.take().unwrap().cleanup(None);
             self.ash_instance.take().unwrap().cleanup(None);
         }
