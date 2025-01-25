@@ -3,6 +3,7 @@ use crate::{
     command_pool::CommandPool,
     constants::*,
     debug_messenger::{self, DebugMessenger},
+    fence::Fence,
     physical_device::PhysicalDevice,
     pipeline::Pipeline,
     queue::{QueueFamilyIndices, Queues},
@@ -52,7 +53,7 @@ pub struct App {
     command_buffers: Option<Vec<vk::CommandBuffer>>,
     image_available_sems: Option<Vec<Semaphore>>,
     render_finished_sems: Option<Vec<Semaphore>>,
-    in_flight_fences: Option<Vec<vk::Fence>>,
+    in_flight_fences: Option<Vec<Fence>>,
     current_frame: usize,
     start_time: std::time::SystemTime,
 }
@@ -909,7 +910,7 @@ impl App {
             unsafe {
                 image_available_sems.push(Semaphore::new(device, &sem_info, None).unwrap());
                 render_finished_sems.push(Semaphore::new(device, &sem_info, None).unwrap());
-                in_flight_fences.push(device.create_fence(&fence_info, None).unwrap());
+                in_flight_fences.push(Fence::new(device, &fence_info, None).unwrap());
             }
         }
 
@@ -929,7 +930,7 @@ impl App {
 
         unsafe {
             device
-                .wait_for_fences(&[in_flight_fences[current_frame]], true, u64::MAX)
+                .wait_for_fences(&[in_flight_fences[current_frame].fence()], true, u64::MAX)
                 .unwrap();
 
             let image_available_sems = self.image_available_sems.as_ref().unwrap();
@@ -971,14 +972,14 @@ impl App {
                 .signal_semaphores(&signal_sems);
 
             device
-                .reset_fences(&[in_flight_fences[current_frame]])
+                .reset_fences(&[in_flight_fences[current_frame].fence()])
                 .unwrap();
 
             device
                 .queue_submit(
                     self.queues.as_ref().unwrap().graphics,
                     &[submit_info],
-                    in_flight_fences[current_frame],
+                    in_flight_fences[current_frame].fence(),
                 )
                 .unwrap();
 
@@ -1131,7 +1132,6 @@ impl App {
 }
 
 impl Drop for App {
-    // i should probably use macro lol
     fn drop(&mut self) {
         let device = self.device.take().unwrap();
         let render_pass = self.render_pass.take().unwrap();
@@ -1152,7 +1152,7 @@ impl Drop for App {
                 .take()
                 .unwrap()
                 .into_iter()
-                .for_each(|x| device.destroy_fence(x, None));
+                .for_each(|x| x.cleanup(&device, None));
             device.destroy_descriptor_pool(descriptor_pool, None);
             self.uniform_buffers
                 .take()
