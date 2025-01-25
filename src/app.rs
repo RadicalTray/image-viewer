@@ -3,7 +3,7 @@ use crate::{
     constants::*,
     debug_messenger::{self, DebugMessenger},
     physical_device::PhysicalDevice,
-    queue_family_indices::QueueFamilyIndices,
+    queue::{QueueFamilyIndices, Queues},
     shader_module::ShaderModule,
     swapchain::Swapchain,
     uniform_buffer_object::UniformBufferObject,
@@ -36,8 +36,7 @@ pub struct App {
     queue_family_indices: Option<QueueFamilyIndices>,
     physical_device: Option<PhysicalDevice>,
     device: Option<ash::Device>,
-    graphics_queue: Option<vk::Queue>,
-    present_queue: Option<vk::Queue>,
+    queues: Option<Queues>,
     swapchain: Option<Swapchain>,
     render_pass: Option<vk::RenderPass>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
@@ -92,8 +91,7 @@ impl App {
             queue_family_indices: None,
             physical_device: None,
             device: None,
-            graphics_queue: None,
-            present_queue: None,
+            queues: None,
             swapchain: None,
             render_pass: None,
             descriptor_set_layout: None,
@@ -387,8 +385,12 @@ impl App {
             .create_logical_device(ash_instance, &device_info, None)
             .unwrap();
 
-        self.graphics_queue = unsafe { Some(device.get_device_queue(graphics_family, 0)) };
-        self.present_queue = unsafe { Some(device.get_device_queue(present_family, 0)) };
+        self.queues = unsafe {
+            Some(Queues {
+                graphics: device.get_device_queue(graphics_family, 0),
+                present: device.get_device_queue(present_family, 0),
+            })
+        };
         self.device = Some(device);
     }
 
@@ -751,7 +753,7 @@ impl App {
         let command_buffers = [command_buffer];
         let submit_info = vk::SubmitInfo::default().command_buffers(&command_buffers);
         let submits = [submit_info];
-        let graphics_queue = *self.graphics_queue.as_ref().unwrap();
+        let graphics_queue = self.queues.as_ref().unwrap().graphics;
         unsafe {
             device
                 .queue_submit(graphics_queue, &submits, vk::Fence::null())
@@ -984,7 +986,7 @@ impl App {
 
             device
                 .queue_submit(
-                    *self.graphics_queue.as_ref().unwrap(),
+                    self.queues.as_ref().unwrap().graphics,
                     &[submit_info],
                     in_flight_fences[current_frame],
                 )
@@ -999,7 +1001,7 @@ impl App {
 
             match swapchain
                 .device()
-                .queue_present(*self.present_queue.as_ref().unwrap(), &present_info)
+                .queue_present(self.queues.as_ref().unwrap().present, &present_info)
             {
                 Ok(is_suboptimal) => {
                     if is_suboptimal {

@@ -1,3 +1,10 @@
+use ash::vk;
+
+pub struct Queues {
+    pub graphics: vk::Queue,
+    pub present: vk::Queue,
+}
+
 #[derive(Default)]
 pub struct QueueFamilyIndices {
     pub graphics_family: Option<u32>,

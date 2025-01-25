@@ -3,7 +3,7 @@ mod buffer;
 mod constants;
 mod debug_messenger;
 mod physical_device;
-mod queue_family_indices;
+mod queue;
 mod shader_module;
 mod swapchain;
 mod uniform_buffer_object;
