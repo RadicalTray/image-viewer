@@ -3,6 +3,7 @@ use crate::{
     command_pool::CommandPool,
     constants::*,
     debug_messenger::{self, DebugMessenger},
+    descriptor_pool::DescriptorPool,
     descriptor_set_layout::DescriptorSetLayout,
     fence::Fence,
     physical_device::PhysicalDevice,
@@ -50,7 +51,7 @@ pub struct App {
     vertex_buffer: Option<Buffer>,
     index_buffer: Option<Buffer>,
     uniform_buffers: Option<Vec<Buffer>>,
-    descriptor_pool: Option<vk::DescriptorPool>,
+    descriptor_pool: Option<DescriptorPool>,
     descriptor_sets: Option<Vec<vk::DescriptorSet>>,
     command_buffers: Option<Vec<vk::CommandBuffer>>,
     image_available_sems: Option<Vec<Semaphore>>,
@@ -848,13 +849,13 @@ impl App {
             .max_sets(MAX_FRAMES_IN_FLIGHT.try_into().unwrap())
             .pool_sizes(&pool_sizes);
 
-        let pool = unsafe { device.create_descriptor_pool(&pool_info, None).unwrap() };
+        let pool = unsafe { DescriptorPool::new(device, &pool_info, None).unwrap() };
         self.descriptor_pool = Some(pool);
     }
 
     fn init_descriptor_sets(&mut self) {
         let layout = self.descriptor_set_layout.as_ref().unwrap().layout();
-        let descriptor_pool = *self.descriptor_pool.as_ref().unwrap();
+        let descriptor_pool = self.descriptor_pool.as_ref().unwrap().pool();
         let device = self.device.as_ref().unwrap();
         let uniform_buffers = self.uniform_buffers.as_ref().unwrap();
 
@@ -1133,7 +1134,6 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         let device = self.device.take().unwrap();
-        let descriptor_pool = self.descriptor_pool.take().unwrap();
 
         unsafe {
             device.device_wait_idle().unwrap();
@@ -1149,7 +1149,7 @@ impl Drop for App {
                 .unwrap()
                 .into_iter()
                 .for_each(|x| x.cleanup(&device, None));
-            device.destroy_descriptor_pool(descriptor_pool, None);
+            self.descriptor_pool.take().unwrap().cleanup(&device, None);
             self.uniform_buffers
                 .take()
                 .unwrap()

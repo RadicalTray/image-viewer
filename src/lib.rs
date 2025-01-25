@@ -3,6 +3,7 @@ mod buffer;
 mod command_pool;
 mod constants;
 mod debug_messenger;
+mod descriptor_pool;
 mod descriptor_set_layout;
 mod fence;
 mod physical_device;
