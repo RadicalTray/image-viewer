@@ -56,12 +56,29 @@ pub fn populate_debug_create_info(
 }
 
 unsafe extern "system" fn debug_callback(
-    _: DebugUtilsMessageSeverityFlagsEXT,
-    _: DebugUtilsMessageTypeFlagsEXT,
+    msg_severity: DebugUtilsMessageSeverityFlagsEXT,
+    msg_type: DebugUtilsMessageTypeFlagsEXT,
     callback_data: *const DebugUtilsMessengerCallbackDataEXT<'_>,
-    _: *mut c_void,
+    _user_data: *mut c_void,
 ) -> vk::Bool32 {
     let s = unsafe { CStr::from_ptr((*callback_data).p_message) };
-    println!("DEBUG: {}", String::from_utf8_lossy(s.to_bytes()));
+    let s = String::from_utf8_lossy(s.to_bytes());
+    let t = match msg_type {
+        DebugUtilsMessageTypeFlagsEXT::GENERAL => "G",
+        DebugUtilsMessageTypeFlagsEXT::VALIDATION => "V",
+        DebugUtilsMessageTypeFlagsEXT::PERFORMANCE => "P",
+        DebugUtilsMessageTypeFlagsEXT::DEVICE_ADDRESS_BINDING => "D",
+        _ => "_",
+    };
+    let c = match msg_severity {
+        DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "",
+        DebugUtilsMessageSeverityFlagsEXT::INFO => "\x1b[0;34m",
+        DebugUtilsMessageSeverityFlagsEXT::WARNING => "\x1b[0;33m",
+        DebugUtilsMessageSeverityFlagsEXT::ERROR => "\x1b[0;31m",
+        _ => "",
+    };
+    let nc = "\x1b[0m";
+
+    println!("{c}{t}: {s}{nc}");
     vk::FALSE
 }
